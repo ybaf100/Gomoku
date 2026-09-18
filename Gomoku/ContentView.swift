@@ -349,7 +349,6 @@ struct ContentView: View {
                 enabled: game.currentTurn == game.playerStone && game.result == nil && !game.isThinking,
                 language: language, onSelect: game.selectMove
             )
-            .accessibilityIdentifier("gameBoard")
             HStack {
                 Text("RENJU · 15 × 15").tracking(1.5)
                 Spacer()
