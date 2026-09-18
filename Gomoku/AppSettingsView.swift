@@ -90,11 +90,20 @@ struct AppSettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .background { GameBackdrop() }
+        // On a compact presentation the presenting root may defer updates.
+        // Apply the preference from the visible sheet as well.
+        .background {
+            WindowAppearance(mode: AppearanceMode(rawValue: appearanceRaw) ?? .system)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .foregroundStyle(theme.ink)
         .tint(theme.accent)
         .navigationTitle(L10n.text("appSettings", language))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(theme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(scheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(L10n.text("done", language)) { dismiss() }

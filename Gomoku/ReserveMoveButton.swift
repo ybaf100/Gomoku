@@ -66,10 +66,18 @@ struct ReserveMoveButton: View {
                         .strokeBorder(fill.opacity(enabled ? 0.8 : 0.25), lineWidth: 1)
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ReservePressStyle())
         .disabled(!enabled)
         .accessibilityLabel(accessibilityTitle)
         .accessibilityValue(accessibilityTime)
         .accessibilityIdentifier("confirmMove")
+    }
+}
+
+private struct ReservePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        // The disabled action still conveys live time, so keep the gauge and
+        // its text at full contrast while the player chooses an intersection.
+        configuration.label.opacity(configuration.isPressed ? 0.9 : 1)
     }
 }

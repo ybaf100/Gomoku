@@ -84,7 +84,11 @@ jobs:
 
   design-check:
     runs-on: macos-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPad, iPhone]
     steps:
       - uses: actions/checkout@v4
       - name: Generate Xcode project
@@ -103,6 +107,7 @@ jobs:
               f.write('IPAD_ID=' + ipad['udid'] + '\nIPHONE_ID=' + phone['udid'] + '\n')
           PY
       - name: Verify themes, saved preferences, replay and confirmed moves on iPad
+        if: matrix.device == 'iPad'
         run: |
           xcrun simctl boot "$IPAD_ID"
           xcrun simctl bootstatus "$IPAD_ID" -b
@@ -113,6 +118,7 @@ jobs:
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPad.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow CODE_SIGNING_ALLOWED=NO
       - name: Verify system appearance
+        if: matrix.device == 'iPad'
         run: |
           xcrun simctl ui "$IPAD_ID" appearance dark
           xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
@@ -120,8 +126,8 @@ jobs:
             -parallel-testing-enabled NO -resultBundlePath build/Design-System.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testSystemFollowsDarkAndCanBeRestored CODE_SIGNING_ALLOWED=NO
       - name: Verify compact layout on iPhone
+        if: matrix.device == 'iPhone'
         run: |
-          xcrun simctl shutdown "$IPAD_ID"
           xcrun simctl boot "$IPHONE_ID"
           xcrun simctl bootstatus "$IPHONE_ID" -b
           xcrun simctl ui "$IPHONE_ID" appearance light
@@ -143,7 +149,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Gomoku-Design-Previews
+          name: Gomoku-Design-Previews-${{ matrix.device }}
           path: build/DesignPreviews
           if-no-files-found: warn
           retention-days: 14

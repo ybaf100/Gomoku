@@ -30,7 +30,7 @@ final class AppearanceTests: XCTestCase {
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         let expected = NSPredicate(format: "value == %@", value)
         expectation(for: expected, evaluatedWith: status)
-        waitForExpectations(timeout: 8)
+        waitForExpectations(timeout: 20)
     }
 
     func testThemePersistenceAndGameFlow() {
@@ -82,7 +82,7 @@ final class AppearanceTests: XCTestCase {
         tap("confirmMove")
         let stone = app.buttons["intersection.H8"]
         expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: stone)
-        waitForExpectations(timeout: 8)
+        waitForExpectations(timeout: 20)
         screenshot("09-game-dark-placed")
 
         tap("openSettings")

@@ -61,6 +61,8 @@ struct GameHistoryView: View {
         .navigationTitle(L10n.text("records", language))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(theme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(scheme, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button(L10n.text("close", language)) { dismiss() }
@@ -162,6 +164,8 @@ struct ReplayView: View {
         .navigationTitle(L10n.text("replay", language))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(theme.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(scheme, for: .navigationBar)
     }
 
     private var board: some View {

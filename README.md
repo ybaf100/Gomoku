@@ -64,7 +64,7 @@ Requires iOS/iPadOS 17 or later.
 
 ## UI validation
 
-Pull requests run the unsigned iOS build and simulator UI checks. The checks cover explicit Light/Dark switching, persistence after relaunch, System mode on a dark device, move preview/confirmation, replay navigation, and compact layout. Simulator screenshots are uploaded as **Gomoku-Design-Previews**. Run the System test with the simulator set to Dark.
+Pull requests run the unsigned iOS build and simulator UI checks. The checks cover explicit Light/Dark switching, persistence after relaunch, System mode on a dark device, move preview/confirmation, replay navigation, and compact layout. Simulator screenshots are uploaded as **Gomoku-Design-Previews-iPad** and **Gomoku-Design-Previews-iPhone**. Run the System test with the simulator set to Dark.
 
 Demo records used by the UI tests are compiled only in Debug and require explicit test launch arguments; they are not included in the Release IPA. Physical-device rendering, VoiceOver navigation, and Stage Manager still need hands-on validation.
 
