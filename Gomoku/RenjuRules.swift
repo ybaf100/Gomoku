@@ -86,44 +86,44 @@ enum RenjuRules {
     ) -> Set<String> {
         var result = Set<String>()
 
-        for extension in lineCandidates(around: anchor) {
-            guard board[extension.row][extension.column] == .empty else {
+        for candidateMove in lineCandidates(around: anchor) {
+            guard board[candidateMove.row][candidateMove.column] == .empty else {
                 continue
             }
 
             var next = board
-            next[extension.row][extension.column] = .black
+            next[candidateMove.row][candidateMove.column] = .black
 
             // By definition, a three must become a straight four without
             // simultaneously becoming a five.
-            if isWinningMove(board: next, move: extension, stone: .black) {
+            if isWinningMove(board: next, move: candidateMove, stone: .black) {
                 continue
             }
 
-            if hasOverline(board: next, move: extension) {
+            if hasOverline(board: next, move: candidateMove) {
                 continue
             }
 
-            if fourThreats(board: next, required: [extension]).count >= 2 {
+            if fourThreats(board: next, required: [candidateMove]).count >= 2 {
                 continue
             }
 
-            // RIF 9.3 requires the extension itself to be a legal continuation.
+            // RIF 9.3 requires the candidateMove itself to be a legal continuation.
             // Recursing twice covers ordinary and nested false-three cases while
             // keeping AI move generation fast on-device.
             if recursionDepth < 2,
-               threeSets(board: next, anchor: extension, recursionDepth: recursionDepth + 1).count >= 2 {
+               threeSets(board: next, anchor: candidateMove, recursionDepth: recursionDepth + 1).count >= 2 {
                 continue
             }
 
             let straightFours = fourThreats(
                 board: next,
-                required: [anchor, extension]
+                required: [anchor, candidateMove]
             ).values.filter { $0.winningPoints.count >= 2 }
 
             for threat in straightFours {
                 var three = threat.stones
-                three.remove(extension)
+                three.remove(candidateMove)
 
                 guard three.count == 3, three.contains(anchor) else {
                     continue
