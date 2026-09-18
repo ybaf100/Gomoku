@@ -44,6 +44,19 @@ enum RenjuRules {
             return nil
         }
 
+        // A double-three needs at least four existing black stones.
+        // Before that point no Renju forbidden pattern can be created, so skip
+        // the expensive recursive evaluator. This also keeps Black's opening
+        // moves instant on iPad.
+        let existingBlack = board.reduce(into: 0) { total, row in
+            total += row.reduce(into: 0) { count, stone in
+                if stone == .black { count += 1 }
+            }
+        }
+        if existingBlack < 4 {
+            return nil
+        }
+
         var next = board
         next[move.row][move.column] = .black
 
