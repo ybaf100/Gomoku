@@ -56,6 +56,32 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  engine-check:
+    runs-on: macos-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile optimized engine and confirmation regressions
+        run: |
+          mkdir -p build
+          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/Localization.swift \
+            Gomoku/RenjuRules.swift Gomoku/GomokuAI.swift Gomoku/GameViewModel.swift \
+            Tests/EngineChecks.swift -o build/engine-checks
+      - name: Verify rules, tactics, deadline and UI responsiveness
+        run: build/engine-checks
+      - name: Measure the previous forbidden-check implementation
+        run: |
+          git fetch --depth=1 origin 36435175efd3a4564277ba2fcee992ed05f00d80
+          git show 36435175efd3a4564277ba2fcee992ed05f00d80:Gomoku/RenjuRules.swift > build/BeforeRules.swift
+          swiftc -O -parse-as-library Gomoku/Models.swift build/BeforeRules.swift Tests/BenchmarkBefore.swift -o build/before-check
+          python3 - <<'PYTHON'
+          import subprocess
+          try:
+              subprocess.run(['build/before-check'], timeout=20, check=True)
+          except subprocess.TimeoutExpired:
+              print('Before: forbidden check exceeded 20 seconds on this CI runner')
+          PYTHON
+
   design-check:
     runs-on: macos-latest
     timeout-minutes: 25

@@ -348,7 +348,7 @@ struct ContentView: View {
             BoardView(
                 board: game.board, lastMove: game.lastMove,
                 selectedMove: game.selectedMove, previewStone: game.playerStone,
-                enabled: game.currentTurn == game.playerStone && game.result == nil && !game.isThinking,
+                enabled: game.currentTurn == game.playerStone && game.result == nil && !game.isThinking && !game.isValidatingMove,
                 language: language, onSelect: game.selectMove
             )
             HStack {
@@ -401,7 +401,7 @@ struct ContentView: View {
 
     private var turnStatus: some View {
         HStack(spacing: 10) {
-            if game.isThinking {
+            if game.isThinking || game.isValidatingMove {
                 ProgressView().tint(theme.accent)
             } else {
                 Image(systemName: game.result == nil ? "circle.dotted.circle.fill" : "checkmark.circle")
@@ -444,15 +444,15 @@ struct ContentView: View {
                     .buttonStyle(GomokuButtonStyle(primary: false))
                     .frame(width: 54)
                     .accessibilityLabel(L10n.text("cancelSelection", language))
-                    .disabled(game.selectedMove == nil)
+                    .disabled(game.selectedMove == nil || game.isValidatingMove)
 
                     Button { game.confirmSelectedMove() } label: {
-                        Label(L10n.text("place", language), systemImage: "checkmark")
+                        Label(L10n.text(game.isValidatingMove ? "validatingMove" : "place", language), systemImage: "checkmark")
                     }
                     .buttonStyle(GomokuButtonStyle())
                     .accessibilityIdentifier("confirmMove")
                     .disabled(game.selectedMove == nil || game.currentTurn != game.playerStone ||
-                              game.result != nil || game.isThinking)
+                              game.result != nil || game.isThinking || game.isValidatingMove)
                 }
             }
         }

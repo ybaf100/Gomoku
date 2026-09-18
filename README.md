@@ -67,3 +67,13 @@ Requires iOS/iPadOS 17 or later.
 Pull requests run the unsigned iOS build and simulator UI checks. The checks cover explicit Light/Dark switching, persistence after relaunch, System mode on a dark device, move preview/confirmation, replay navigation, and compact layout. Simulator screenshots are uploaded as **Gomoku-Design-Previews**. Run the System test with the simulator set to Dark.
 
 Demo records used by the UI tests are compiled only in Debug and require explicit test launch arguments; they are not included in the Release IPA. Physical-device rendering, VoiceOver navigation, and Stage Manager still need hands-on validation.
+
+## AI and move responsiveness
+
+The local engine checks immediate wins and blocks across the entire board, scores both contiguous and broken shapes, and uses iterative alpha-beta search for Normal, Hard and Adaptive levels. The search targets a 2.2-second budget and keeps the best fully completed iteration. Hard and higher Adaptive levels search deeper when the budget allows. This is a local heuristic engine, not Rapfi or a trained neural network.
+
+Confirming a move performs forbidden-pattern validation off the main actor. While the check runs, selection is locked and a checking status is shown. Returning to setup, restarting, or finishing cancels outstanding validation/search; request identifiers reject stale results. Forbidden-pattern evaluation examines only windows containing the relevant stone and recurses only on actual straight-four continuations. History encoding/writes also run off the main actor in order.
+
+The `engine-check` CI job covers forbidden moves, edge threats, broken fours, forced wins, search deadlines, fast confirmation return, duplicate submissions, and cancellation across restarts. It also benchmarks the previous forbidden-check implementation. CI timing is not a guarantee for every physical device.
+
+An external engine option is [Rapfi](https://github.com/dhbloo/rapfi), a GPLv3 C++ Gomoku/Renju engine with classical/NNUE evaluation and ARM64 support. Its executable/protocol interface and evaluation weights require a native in-process adapter or a hosted service before this iOS app can use it. Rapfi is not bundled or called by this version.
