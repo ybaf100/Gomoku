@@ -2,42 +2,76 @@ import Foundation
 
 struct GomokuAI: Sendable {
     let difficulty: AIDifficulty
+    let adaptiveSkill: Int
 
-    func chooseMove(board: [[Stone]], stone: Stone) -> Move? {
-        let legal = candidateMoves(board: board).filter {
-            RenjuRules.isLegalMove(board: board, move: $0, stone: stone)
+    init(difficulty: AIDifficulty, adaptiveSkill: Int = 50) {
+        self.difficulty = difficulty
+        self.adaptiveSkill = min(100, max(0, adaptiveSkill))
+    }
+
+    func chooseMove(
+        board: [[Stone]],
+        stone: Stone,
+        timeLimit: TimeInterval = 2.35
+    ) -> Move? {
+        let deadline = Date().addingTimeInterval(max(0.2, timeLimit))
+        let candidates = candidateMoves(board: board)
+        var legal: [Move] = []
+
+        for move in candidates {
+            if Date() >= deadline { break }
+            if RenjuRules.isLegalMove(board: board, move: move, stone: stone) {
+                legal.append(move)
+            }
         }
 
-        guard !legal.isEmpty else { return nil }
+        if legal.isEmpty {
+            return quickFallback(board: board, stone: stone)
+        }
 
-        // Never miss a direct win.
-        if let win = legal.first(where: { move in
+        // Immediate tactical moves always take priority at every difficulty.
+        for move in legal {
+            if Date() >= deadline { break }
             var next = board
             next[move.row][move.column] = stone
-            return RenjuRules.isWinningMove(board: next, move: move, stone: stone)
-        }) {
-            return win
+            if RenjuRules.isWinningMove(board: next, move: move, stone: stone) {
+                return move
+            }
         }
 
-        // Always block an opponent's immediate legal win if possible.
         let opponent = stone.opponent
-        let opponentWinningMoves = candidateMoves(board: board).filter { move in
+        var opponentWins = Set<Move>()
+
+        for move in candidates.prefix(32) {
+            if Date() >= deadline { break }
             guard RenjuRules.isLegalMove(board: board, move: move, stone: opponent) else {
-                return false
+                continue
             }
 
             var next = board
             next[move.row][move.column] = opponent
-            return RenjuRules.isWinningMove(board: next, move: move, stone: opponent)
+            if RenjuRules.isWinningMove(board: next, move: move, stone: opponent) {
+                opponentWins.insert(move)
+            }
         }
 
-        if let forcedBlock = legal.first(where: { opponentWinningMoves.contains($0) }) {
+        if let forcedBlock = legal.first(where: { opponentWins.contains($0) }) {
             return forcedBlock
         }
 
-        let ranked = legal
-            .map { ($0, staticScore(board: board, move: $0, stone: stone)) }
-            .sorted { $0.1 > $1.1 }
+        var ranked: [(Move, Int)] = []
+        ranked.reserveCapacity(legal.count)
+
+        for move in legal {
+            if Date() >= deadline { break }
+            ranked.append((move, staticScore(board: board, move: move, stone: stone)))
+        }
+
+        ranked.sort { $0.1 > $1.1 }
+
+        guard !ranked.isEmpty else {
+            return legal.first
+        }
 
         switch difficulty {
         case .easy:
@@ -48,30 +82,118 @@ struct GomokuAI: Sendable {
             return ranked[0].0
 
         case .hard:
-            return hardChoice(board: board, stone: stone, ranked: ranked)
+            return lookAheadChoice(
+                board: board,
+                stone: stone,
+                ranked: ranked,
+                maxMyCandidates: 8,
+                maxReplies: 6,
+                defenseWeight: 0.94,
+                deadline: deadline
+            )
+
+        case .adaptive:
+            return adaptiveChoice(
+                board: board,
+                stone: stone,
+                ranked: ranked,
+                deadline: deadline
+            )
         }
     }
 
-    private func hardChoice(
+    func quickFallback(board: [[Stone]], stone: Stone) -> Move? {
+        for move in candidateMoves(board: board).prefix(24) {
+            if RenjuRules.isLegalMove(board: board, move: move, stone: stone) {
+                return move
+            }
+        }
+
+        for row in 0..<RenjuRules.boardSize {
+            for column in 0..<RenjuRules.boardSize {
+                let move = Move(row: row, column: column)
+                if RenjuRules.isLegalMove(board: board, move: move, stone: stone) {
+                    return move
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func adaptiveChoice(
         board: [[Stone]],
         stone: Stone,
-        ranked: [(Move, Int)]
+        ranked: [(Move, Int)],
+        deadline: Date
     ) -> Move {
-        let myCandidates = Array(ranked.prefix(min(14, ranked.count)))
+        let skill = adaptiveSkill
+
+        if skill < 40 {
+            // Low ratings deliberately allow more near-best alternatives.
+            let poolSize = min(ranked.count, max(2, 7 - skill / 10))
+            return Array(ranked.prefix(poolSize)).randomElement()?.0 ?? ranked[0].0
+        }
+
+        if skill < 60 {
+            // 50/100 starts here: equivalent to Normal.
+            return ranked[0].0
+        }
+
+        let candidateCount = min(9, 4 + (skill - 60) / 7)
+        let replyCount = min(7, 3 + (skill - 60) / 9)
+        let defenseWeight = min(0.98, 0.88 + Double(skill) / 1000.0)
+
+        return lookAheadChoice(
+            board: board,
+            stone: stone,
+            ranked: ranked,
+            maxMyCandidates: candidateCount,
+            maxReplies: replyCount,
+            defenseWeight: defenseWeight,
+            deadline: deadline
+        )
+    }
+
+    private func lookAheadChoice(
+        board: [[Stone]],
+        stone: Stone,
+        ranked: [(Move, Int)],
+        maxMyCandidates: Int,
+        maxReplies: Int,
+        defenseWeight: Double,
+        deadline: Date
+    ) -> Move {
+        let myCandidates = Array(ranked.prefix(min(maxMyCandidates, ranked.count)))
         var bestMove = myCandidates[0].0
         var bestValue = Int.min
 
         for (move, baseScore) in myCandidates {
+            if Date() >= deadline { break }
+
             var next = board
             next[move.row][move.column] = stone
-
             let opponent = stone.opponent
-            let responses = candidateMoves(board: next)
-                .filter { RenjuRules.isLegalMove(board: next, move: $0, stone: opponent) }
-                .map { ($0, staticScore(board: next, move: $0, stone: opponent)) }
-                .sorted { $0.1 > $1.1 }
 
-            let strongestReply = responses.prefix(min(10, responses.count)).map { response -> Int in
+            var responses: [(Move, Int)] = []
+            for response in candidateMoves(board: next).prefix(28) {
+                if Date() >= deadline { break }
+                guard RenjuRules.isLegalMove(board: next, move: response, stone: opponent) else {
+                    continue
+                }
+                responses.append((
+                    response,
+                    staticScore(board: next, move: response, stone: opponent)
+                ))
+            }
+
+            responses.sort { $0.1 > $1.1 }
+
+            var strongestReply = 0
+
+            for response in responses.prefix(maxReplies) {
+                if Date() >= deadline { break }
+
                 var replyBoard = next
                 replyBoard[response.0.row][response.0.column] = opponent
 
@@ -80,13 +202,14 @@ struct GomokuAI: Sendable {
                     move: response.0,
                     stone: opponent
                 ) {
-                    return 50_000_000
+                    strongestReply = 50_000_000
+                    break
                 }
 
-                return response.1
-            }.max() ?? 0
+                strongestReply = max(strongestReply, response.1)
+            }
 
-            let value = baseScore - Int(Double(strongestReply) * 0.92)
+            let value = baseScore - Int(Double(strongestReply) * defenseWeight)
 
             if value > bestValue {
                 bestValue = value
@@ -218,6 +341,16 @@ struct GomokuAI: Sendable {
             }
         }
 
-        return Array(candidates)
+        return candidates.sorted { lhs, rhs in
+            let leftDistance = abs(lhs.row - 7) + abs(lhs.column - 7)
+            let rightDistance = abs(rhs.row - 7) + abs(rhs.column - 7)
+            if leftDistance != rightDistance {
+                return leftDistance < rightDistance
+            }
+            if lhs.row != rhs.row {
+                return lhs.row < rhs.row
+            }
+            return lhs.column < rhs.column
+        }
     }
 }
