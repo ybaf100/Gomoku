@@ -13,34 +13,52 @@ enum Stone: Int, Codable, Sendable {
         case .empty: return .empty
         }
     }
-
-    var displayName: String {
-        switch self {
-        case .black: return "Black"
-        case .white: return "White"
-        case .empty: return "Empty"
-        }
-    }
 }
 
 struct Move: Hashable, Codable, Sendable {
     let row: Int
     let column: Int
+
+    var coordinate: String {
+        let letter = String(UnicodeScalar(65 + column)!)
+        return "\(letter)\(row + 1)"
+    }
 }
 
 enum AIDifficulty: String, CaseIterable, Identifiable, Codable, Sendable {
-    case easy = "Easy"
-    case normal = "Normal"
-    case hard = "Hard"
-    case adaptive = "Adaptive"
+    case easy
+    case normal
+    case hard
+    case adaptive
 
     var id: String { rawValue }
 }
 
+enum AppLanguage: String, CaseIterable, Identifiable, Codable {
+    case korean = "ko"
+    case english = "en"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .korean: return "한국어"
+        case .english: return "English"
+        }
+    }
+
+    var localeIdentifier: String {
+        switch self {
+        case .korean: return "ko_KR"
+        case .english: return "en_US"
+        }
+    }
+}
+
 enum AppearanceMode: String, CaseIterable, Identifiable {
-    case system = "System"
-    case light = "Light"
-    case dark = "Dark"
+    case system
+    case light
+    case dark
 
     var id: String { rawValue }
 
@@ -54,9 +72,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 enum TimeControl: String, CaseIterable, Identifiable, Codable, Sendable {
-    case fast = "Fast"
-    case slow = "Slow"
-    case unlimited = "Unlimited"
+    case fast
+    case slow
+    case unlimited
 
     var id: String { rawValue }
 
@@ -67,20 +85,12 @@ enum TimeControl: String, CaseIterable, Identifiable, Codable, Sendable {
         case .unlimited: return nil
         }
     }
-
-    var subtitle: String {
-        switch self {
-        case .fast: return "3 min"
-        case .slow: return "10 min"
-        case .unlimited: return "No clock"
-        }
-    }
 }
 
-enum ForbiddenReason: String, Sendable {
-    case overline = "Overline"
-    case doubleFour = "Double-four"
-    case doubleThree = "Double-three"
+enum ForbiddenReason: String, Codable, Sendable {
+    case overline
+    case doubleFour
+    case doubleThree
 }
 
 enum GameResult: String, Codable, Equatable, Sendable {
@@ -103,6 +113,12 @@ enum GameResult: String, Codable, Equatable, Sendable {
     func aiWon(playerStone: Stone) -> Bool {
         self != .draw && !playerWon(playerStone: playerStone)
     }
+}
+
+enum GameNotice: Equatable {
+    case occupied
+    case selectMove
+    case forbidden(ForbiddenReason)
 }
 
 struct RecordedMove: Identifiable, Codable, Hashable, Sendable {
@@ -129,7 +145,7 @@ struct GameRecord: Identifiable, Codable, Sendable {
 
     init(
         id: UUID = UUID(),
-        playedAt: Date,
+        playedAt: Date = Date(),
         playerStone: Stone,
         difficulty: AIDifficulty,
         adaptiveSkill: Int?,
@@ -145,17 +161,5 @@ struct GameRecord: Identifiable, Codable, Sendable {
         self.timeControl = timeControl
         self.result = result
         self.moves = moves
-    }
-
-    var resultText: String {
-        if result == .draw { return "Draw" }
-        return result.playerWon(playerStone: playerStone) ? "Win" : "Loss"
-    }
-
-    var aiLabel: String {
-        if difficulty == .adaptive, let adaptiveSkill {
-            return "Adaptive · \(adaptiveSkill)/100"
-        }
-        return difficulty.rawValue
     }
 }
