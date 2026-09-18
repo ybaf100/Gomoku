@@ -35,18 +35,20 @@ struct ContentView: View {
             .foregroundStyle(theme.ink)
         }
         .tint(theme.accent)
-        .preferredColorScheme(appearance.colorScheme)
+        .background {
+            WindowAppearance(mode: appearance)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 AppSettingsView(languageRaw: $languageRaw, appearanceRaw: $appearanceRaw)
             }
-            .preferredColorScheme(appearance.colorScheme)
         }
         .sheet(isPresented: $showHistory) {
             NavigationStack {
                 GameHistoryView(records: game.records, language: language, onClear: game.clearRecords)
             }
-            .preferredColorScheme(appearance.colorScheme)
         }
         .confirmationDialog(
             L10n.text("leaveGameTitle", language),
