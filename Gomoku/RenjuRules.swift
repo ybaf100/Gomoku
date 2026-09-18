@@ -1,0 +1,338 @@
+import Foundation
+
+enum RenjuRules {
+    static let boardSize = 15
+
+    private static let directions = [
+        (dr: 1, dc: 0),
+        (dr: 0, dc: 1),
+        (dr: 1, dc: 1),
+        (dr: 1, dc: -1)
+    ]
+
+    private struct FourThreat {
+        var stones: Set<Move>
+        var winningPoints: Set<Move>
+    }
+
+    static func isWinningMove(board: [[Stone]], move: Move, stone: Stone) -> Bool {
+        guard stone != .empty else { return false }
+
+        for direction in directions {
+            let count = contiguousCount(
+                board: board,
+                move: move,
+                stone: stone,
+                dr: direction.dr,
+                dc: direction.dc
+            )
+
+            if stone == .black, count == 5 {
+                return true
+            }
+
+            if stone == .white, count >= 5 {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    static func forbiddenReason(board: [[Stone]], move: Move) -> ForbiddenReason? {
+        guard isInside(move), board[move.row][move.column] == .empty else {
+            return nil
+        }
+
+        var next = board
+        next[move.row][move.column] = .black
+
+        // RIF 9.2: an exact five made at the same time takes precedence.
+        if isWinningMove(board: next, move: move, stone: .black) {
+            return nil
+        }
+
+        if hasOverline(board: next, move: move) {
+            return .overline
+        }
+
+        if fourThreats(board: next, required: [move]).count >= 2 {
+            return .doubleFour
+        }
+
+        if threeSets(board: next, anchor: move, recursionDepth: 0).count >= 2 {
+            return .doubleThree
+        }
+
+        return nil
+    }
+
+    static func isLegalMove(board: [[Stone]], move: Move, stone: Stone) -> Bool {
+        guard isInside(move), board[move.row][move.column] == .empty else {
+            return false
+        }
+
+        if stone == .black {
+            return forbiddenReason(board: board, move: move) == nil
+        }
+
+        return stone == .white
+    }
+
+    private static func threeSets(
+        board: [[Stone]],
+        anchor: Move,
+        recursionDepth: Int
+    ) -> Set<String> {
+        var result = Set<String>()
+
+        for extension in lineCandidates(around: anchor) {
+            guard board[extension.row][extension.column] == .empty else {
+                continue
+            }
+
+            var next = board
+            next[extension.row][extension.column] = .black
+
+            // By definition, a three must become a straight four without
+            // simultaneously becoming a five.
+            if isWinningMove(board: next, move: extension, stone: .black) {
+                continue
+            }
+
+            if hasOverline(board: next, move: extension) {
+                continue
+            }
+
+            if fourThreats(board: next, required: [extension]).count >= 2 {
+                continue
+            }
+
+            // RIF 9.3 requires the extension itself to be a legal continuation.
+            // Recursing twice covers ordinary and nested false-three cases while
+            // keeping AI move generation fast on-device.
+            if recursionDepth < 2,
+               threeSets(board: next, anchor: extension, recursionDepth: recursionDepth + 1).count >= 2 {
+                continue
+            }
+
+            let straightFours = fourThreats(
+                board: next,
+                required: [anchor, extension]
+            ).values.filter { $0.winningPoints.count >= 2 }
+
+            for threat in straightFours {
+                var three = threat.stones
+                three.remove(extension)
+
+                guard three.count == 3, three.contains(anchor) else {
+                    continue
+                }
+
+                result.insert(canonicalKey(three))
+            }
+        }
+
+        return result
+    }
+
+    private static func fourThreats(
+        board: [[Stone]],
+        required: [Move]
+    ) -> [String: FourThreat] {
+        guard let anchor = required.first else { return [:] }
+
+        var threats: [String: FourThreat] = [:]
+
+        for winningPoint in lineCandidates(around: anchor) {
+            guard board[winningPoint.row][winningPoint.column] == .empty else {
+                continue
+            }
+
+            var next = board
+            next[winningPoint.row][winningPoint.column] = .black
+
+            let segments = exactFiveSegments(
+                board: next,
+                required: required + [winningPoint]
+            )
+
+            for segment in segments {
+                var stones = Set(segment)
+                stones.remove(winningPoint)
+
+                guard stones.count == 4 else { continue }
+
+                let key = canonicalKey(stones)
+                var threat = threats[key] ?? FourThreat(
+                    stones: stones,
+                    winningPoints: []
+                )
+                threat.winningPoints.insert(winningPoint)
+                threats[key] = threat
+            }
+        }
+
+        return threats
+    }
+
+    private static func exactFiveSegments(
+        board: [[Stone]],
+        required: [Move]
+    ) -> [[Move]] {
+        var result: [[Move]] = []
+
+        for row in 0..<boardSize {
+            for column in 0..<boardSize {
+                for direction in directions {
+                    let end = Move(
+                        row: row + direction.dr * 4,
+                        column: column + direction.dc * 4
+                    )
+
+                    guard isInside(end) else { continue }
+
+                    var segment: [Move] = []
+                    var allBlack = true
+
+                    for offset in 0..<5 {
+                        let point = Move(
+                            row: row + direction.dr * offset,
+                            column: column + direction.dc * offset
+                        )
+
+                        if board[point.row][point.column] != .black {
+                            allBlack = false
+                            break
+                        }
+
+                        segment.append(point)
+                    }
+
+                    guard allBlack else { continue }
+
+                    let before = Move(
+                        row: row - direction.dr,
+                        column: column - direction.dc
+                    )
+                    let after = Move(
+                        row: end.row + direction.dr,
+                        column: end.column + direction.dc
+                    )
+
+                    if isInside(before), board[before.row][before.column] == .black {
+                        continue
+                    }
+
+                    if isInside(after), board[after.row][after.column] == .black {
+                        continue
+                    }
+
+                    let segmentSet = Set(segment)
+                    if required.allSatisfy({ segmentSet.contains($0) }) {
+                        result.append(segment)
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    private static func hasOverline(board: [[Stone]], move: Move) -> Bool {
+        directions.contains { direction in
+            contiguousCount(
+                board: board,
+                move: move,
+                stone: .black,
+                dr: direction.dr,
+                dc: direction.dc
+            ) >= 6
+        }
+    }
+
+    private static func contiguousCount(
+        board: [[Stone]],
+        move: Move,
+        stone: Stone,
+        dr: Int,
+        dc: Int
+    ) -> Int {
+        var count = 1
+        count += countDirection(
+            board: board,
+            from: move,
+            stone: stone,
+            dr: dr,
+            dc: dc
+        )
+        count += countDirection(
+            board: board,
+            from: move,
+            stone: stone,
+            dr: -dr,
+            dc: -dc
+        )
+        return count
+    }
+
+    private static func countDirection(
+        board: [[Stone]],
+        from move: Move,
+        stone: Stone,
+        dr: Int,
+        dc: Int
+    ) -> Int {
+        var row = move.row + dr
+        var column = move.column + dc
+        var count = 0
+
+        while row >= 0,
+              row < boardSize,
+              column >= 0,
+              column < boardSize,
+              board[row][column] == stone {
+            count += 1
+            row += dr
+            column += dc
+        }
+
+        return count
+    }
+
+    private static func lineCandidates(around anchor: Move) -> Set<Move> {
+        var candidates = Set<Move>()
+
+        for direction in directions {
+            for offset in -4...4 where offset != 0 {
+                let point = Move(
+                    row: anchor.row + direction.dr * offset,
+                    column: anchor.column + direction.dc * offset
+                )
+
+                if isInside(point) {
+                    candidates.insert(point)
+                }
+            }
+        }
+
+        return candidates
+    }
+
+    private static func canonicalKey(_ moves: Set<Move>) -> String {
+        moves
+            .sorted {
+                if $0.row != $1.row { return $0.row < $1.row }
+                return $0.column < $1.column
+            }
+            .map { "\($0.row),\($0.column)" }
+            .joined(separator: "|")
+    }
+
+    private static func isInside(_ move: Move) -> Bool {
+        move.row >= 0 &&
+        move.row < boardSize &&
+        move.column >= 0 &&
+        move.column < boardSize
+    }
+}
