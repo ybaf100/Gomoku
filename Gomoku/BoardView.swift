@@ -17,7 +17,6 @@ struct BoardView: View {
             let boardSide = max(1, side - margin * 2)
             let spacing = boardSide / Double(RenjuRules.boardSize - 1)
             let theme = GomokuTheme(scheme)
-            let origin = geometry.frame(in: .global).origin
 
             Canvas { context, _ in
                 let frame = Path(roundedRect: CGRect(x: 1, y: 1, width: side - 2, height: side - 2),
@@ -99,24 +98,25 @@ struct BoardView: View {
             .accessibilityRepresentation {
                 // Canvas alone has no accessible intersections. Virtual buttons use
                 // the same selection path and keep the confirmation step intact.
-                ForEach(0..<RenjuRules.boardSize, id: \.self) { row in
-                    ForEach(0..<RenjuRules.boardSize, id: \.self) { column in
-                        let move = Move(row: row, column: column)
-                        Button {
-                            if enabled { onSelect(move) }
-                        } label: {
-                            Text("\(move.coordinate), \(board[row][column] == .empty ? L10n.text("emptyPoint", language) : L10n.stone(board[row][column], language: language))")
+                ZStack(alignment: .topLeading) {
+                    ForEach(0..<RenjuRules.boardSize, id: \.self) { row in
+                        ForEach(0..<RenjuRules.boardSize, id: \.self) { column in
+                            let move = Move(row: row, column: column)
+                            Button {
+                                if enabled { onSelect(move) }
+                            } label: {
+                                Text("\(move.coordinate), \(board[row][column] == .empty ? L10n.text("emptyPoint", language) : L10n.stone(board[row][column], language: language))")
+                            }
+                            .frame(width: spacing, height: spacing)
+                            .position(x: margin + Double(column) * spacing,
+                                      y: margin + Double(row) * spacing)
+                            .disabled(!enabled || board[row][column] != .empty)
+                            .accessibilityAddTraits(selectedMove == move ? .isSelected : [])
+                            .accessibilityIdentifier("intersection.\(move.coordinate)")
                         }
-                        .disabled(!enabled || board[row][column] != .empty)
-                        .accessibilityAddTraits(selectedMove == move ? .isSelected : [])
-                        .accessibilityIdentifier("intersection.\(move.coordinate)")
-                        .accessibilityFrame(CGRect(
-                            x: origin.x + (geometry.size.width - side) / 2 + margin + Double(column) * spacing - spacing / 2,
-                            y: origin.y + (geometry.size.height - side) / 2 + margin + Double(row) * spacing - spacing / 2,
-                            width: spacing, height: spacing
-                        ))
                     }
                 }
+                .frame(width: side, height: side)
             }
             .frame(width: side, height: side)
             .position(x: geometry.size.width / 2, y: geometry.size.height / 2)

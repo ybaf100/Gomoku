@@ -10,7 +10,7 @@ struct GomokuTheme {
     var surface: Color { Color(hex: isDark ? 0x1B2723 : 0xFFFEFA) }
     var inset: Color { Color(hex: isDark ? 0x24332D : 0xEEEEE5) }
     var ink: Color { Color(hex: isDark ? 0xF0F2E9 : 0x1C3028) }
-    var secondary: Color { Color(hex: isDark ? 0xADBAB2 : 0x64736A) }
+    var secondary: Color { Color(hex: isDark ? 0xADBAB2 : 0x5E6C62) }
     var accent: Color { Color(hex: isDark ? 0xA9D5BC : 0x27624B) }
     var onAccent: Color { Color(hex: isDark ? 0x163426 : 0xFFFFFF) }
     var accentWash: Color { Color(hex: isDark ? 0x2A4135 : 0xE8F0E7) }
