@@ -64,7 +64,7 @@ jobs:
       - name: Compile optimized engine and confirmation regressions
         run: |
           mkdir -p build
-          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/Localization.swift \
+          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift Gomoku/Localization.swift \
             Gomoku/RenjuRules.swift Gomoku/GomokuAI.swift Gomoku/GameViewModel.swift \
             Tests/EngineChecks.swift -o build/engine-checks
       - name: Verify rules, tactics, deadline and UI responsiveness
@@ -73,7 +73,7 @@ jobs:
         run: |
           git fetch --depth=1 origin 36435175efd3a4564277ba2fcee992ed05f00d80
           git show 36435175efd3a4564277ba2fcee992ed05f00d80:Gomoku/RenjuRules.swift > build/BeforeRules.swift
-          swiftc -O -parse-as-library Gomoku/Models.swift build/BeforeRules.swift Tests/BenchmarkBefore.swift -o build/before-check
+          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift build/BeforeRules.swift Tests/BenchmarkBefore.swift -o build/before-check
           python3 - <<'PYTHON'
           import subprocess
           try:

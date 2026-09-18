@@ -62,6 +62,74 @@ struct EngineChecks {
         require(engine.chooseMove(board: board(), stone: .black, timeLimit: 0.1) == center, "black opening placed at centre")
     }
 
+    static func clockChecks() {
+        let fast = TimeControl.fast.clockConfiguration!
+        var clock = MatchClock(configuration: fast, now: 100)
+        require(clock.black == 30 && clock.white == 30, "both reserves start at 30 seconds")
+        clock.settle(at: 104)
+        require(clock.black == 26 && clock.white == 30, "only active player's reserve drains")
+        require(clock.completeMove(by: .black, at: 104), "legal move completes before expiry")
+        require(clock.black == 31 && clock.activeStone == .white, "five seconds added to the mover exactly once")
+        require(!clock.completeMove(by: .black, at: 104) && clock.black == 31, "duplicate completion cannot add time")
+        clock.settle(at: 106)
+        require(clock.white == 28 && clock.black == 31, "turn switch charges the correct player")
+        _ = clock.completeMove(by: .white, at: 106)
+        for _ in 0..<10 {
+            _ = clock.completeMove(by: .black, at: 106)
+            _ = clock.completeMove(by: .white, at: 106)
+        }
+        require(clock.black == 45 && clock.white == 45, "both reserves stop at the 45-second ceiling")
+        var expired = MatchClock(configuration: fast, now: 0)
+        require(!expired.completeMove(by: .black, at: 30), "exact expiry cannot be rescued by an increment")
+        require(expired.black == 0 && expired.activeStone == .black, "expired move does not switch turns")
+        var delayed = MatchClock(configuration: fast, now: 0)
+        require(delayed.settle(at: 35) == .black, "delayed timer still charges all elapsed time")
+        var unlimited = MatchClock(configuration: nil, now: 0)
+        require(unlimited.completeMove(by: .black, at: 10000), "unlimited play has no expiry")
+        require(unlimited.black == nil && unlimited.white == nil, "unlimited reserves remain absent")
+        let slow = TimeControl.slow.clockConfiguration!
+        require(slow.initial == 60 && slow.increment == 10 && slow.ceiling == 90, "slow preset is 60 + 10 with 90 ceiling")
+        let record = GameRecord(playerStone: .black, difficulty: .normal, adaptiveSkill: nil,
+                                timeControl: .fast, result: .blackWin, moves: [])
+        let encoder = JSONEncoder()
+        let legacyData = try! encoder.encode(record)
+        let legacy = try! JSONDecoder().decode(GameRecord.self, from: legacyData)
+        require(legacy.clockConfiguration == nil, "old records without clock configuration still decode")
+        let modern = GameRecord(playerStone: .black, difficulty: .normal, adaptiveSkill: nil,
+                                timeControl: .fast, result: .blackWin, moves: [], clockConfiguration: fast)
+        let restored = try! JSONDecoder().decode(GameRecord.self, from: encoder.encode(modern))
+        require(restored.clockConfiguration == fast, "new records preserve the actual clock rule")
+    }
+
+    @MainActor
+    static func incrementValidationChecks() async {
+        var now: TimeInterval = 0
+        let game = GameViewModel(clockNow: { now })
+        game.timeControl = .fast
+        game.startGame()
+        game.board = board([(7,6),(7,8),(6,7),(8,7)])
+        game.selectMove(Move(row: 7, column: 7))
+        now = 2
+        game.confirmSelectedMove()
+        for _ in 0..<100 where game.isValidatingMove {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        require(game.notice == .forbidden(.doubleThree) && game.blackTime == 28,
+                "forbidden move consumes elapsed time without awarding increment")
+        require(game.currentTurn == .black && game.board[7][7] == .empty, "forbidden move keeps turn and board")
+        game.backToSetup()
+        game.startGame()
+        game.selectMove(Move(row: 7, column: 7))
+        now = 33 // 31 elapsed since the new game started at 2.
+        game.confirmSelectedMove()
+        for _ in 0..<100 where game.result == nil {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        require(game.result == .blackTimeout && game.blackTime == 0 && game.board[7][7] == .empty,
+                "late confirmation cannot place a stone or refill expired time")
+        game.backToSetup()
+    }
+
     @MainActor
     static func viewModelChecks() async {
         let game = GameViewModel()
@@ -97,7 +165,9 @@ struct EngineChecks {
 
     static func main() async {
         engineChecks()
+        clockChecks()
         await viewModelChecks()
+        await incrementValidationChecks()
         print("All engine, rules, deadline and confirmation checks passed.")
     }
 }

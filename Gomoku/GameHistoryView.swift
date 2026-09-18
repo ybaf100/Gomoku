@@ -103,7 +103,7 @@ struct GameHistoryView: View {
                     )
                     .font(.caption).foregroundStyle(theme.secondary)
                     Text("\(record.moves.count) \(L10n.text("moves", language)) · " +
-                         L10n.timeControl(record.timeControl, language: language))
+                         L10n.recordClock(record, language: language))
                         .font(.caption).foregroundStyle(theme.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

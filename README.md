@@ -8,8 +8,8 @@ Offline iOS/iPadOS Gomoku app for human-vs-AI play.
 - Human vs local AI
 - Player can choose Black or White
 - Easy / Normal / Hard / Adaptive AI (starts at 50/100)
-- Fast: 3 minutes per side
-- Slow: 10 minutes per side
+- Fast reserve: start 30 seconds, +5 seconds per completed move, capped at 45 seconds
+- Slow reserve: start 60 seconds, +10 seconds per completed move, capped at 90 seconds
 - Unlimited clock
 - Last-move marker
 - Time-loss handling
@@ -77,3 +77,9 @@ Confirming a move performs forbidden-pattern validation off the main actor. Whil
 The `engine-check` CI job covers forbidden moves, edge threats, broken fours, forced wins, search deadlines, fast confirmation return, duplicate submissions, and cancellation across restarts. It also benchmarks the previous forbidden-check implementation. CI timing is not a guarantee for every physical device.
 
 An external engine option is [Rapfi](https://github.com/dhbloo/rapfi), a GPLv3 C++ Gomoku/Renju engine with classical/NNUE evaluation and ARM64 support. Its executable/protocol interface and evaluation weights require a native in-process adapter or a hosted service before this iOS app can use it. Rapfi is not bundled or called by this version.
+
+## Refillable time reserve
+
+Both players start with their own reserve. Only the current player loses time. A legal completed move adds the preset increment to that player's reserve, up to its ceiling; the opponent then starts spending their own time. Previewing, cancelling, duplicate input, and forbidden moves never earn time. Reaching zero loses immediately and cannot be rescued by a late confirmation. Unlimited mode remains available. Saved games include their clock configuration; old fixed-total records retain their original 3/10-minute description.
+
+The wide placement button below the board doubles as the active player's time gauge (remaining / ceiling), with quarter marks, numeric time and a low-time colour. On compact windows the button stays pinned at the bottom. Both player cards also show reserve gauges. The green/mint palette follows Light, Dark and System appearance, and the gauge updates without continuous animation.

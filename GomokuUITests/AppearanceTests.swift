@@ -70,11 +70,14 @@ final class AppearanceTests: XCTestCase {
 
         app.terminate()
         app.launch()
+        tap("time.slow")
+        XCTAssertTrue(app.staticTexts["clockRule"].label.contains("+10"))
         tap("startGame")
         let confirm = app.buttons["confirmMove"]
         XCTAssertFalse(confirm.isEnabled)
         tap("intersection.H8")
         XCTAssertTrue(confirm.isEnabled)
+        XCTAssertNotNil(confirm.value as? String)
         screenshot("08-game-dark-preview")
         tap("confirmMove")
         let stone = app.buttons["intersection.H8"]
@@ -116,7 +119,7 @@ final class AppearanceTests: XCTestCase {
         tap("startGame")
         tap("intersection.H8")
         let confirm = app.buttons["confirmMove"]
-        if !confirm.isHittable { app.swipeUp() }
+        // The reserve button stays visible without scrolling on a phone.
         XCTAssertTrue(confirm.isHittable)
         XCTAssertTrue(confirm.isEnabled)
         screenshot("16-phone-game-dark")

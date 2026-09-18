@@ -227,7 +227,7 @@ struct ContentView: View {
                             ForEach(TimeControl.allCases) { control in
                                 SelectionTile(selected: game.timeControl == control, action: { game.timeControl = control }) {
                                     VStack(spacing: 6) {
-                                        Text(control == .fast ? "3:00" : control == .slow ? "10:00" : "∞")
+                                        Text(control == .fast ? "0:30" : control == .slow ? "1:00" : "∞")
                                             .font(.system(.title3, design: .rounded, weight: .semibold))
                                             .monospacedDigit()
                                         Text(L10n.timeControl(control, language: language))
@@ -238,6 +238,13 @@ struct ContentView: View {
                                 .accessibilityIdentifier("time.\(control.rawValue)")
                             }
                         }
+                        Text(L10n.timeSubtitle(game.timeControl, language: language))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(theme.accent)
+                            .accessibilityIdentifier("clockRule")
+                        Text(L10n.text(game.timeControl == .unlimited ? "noClock" : "timeRefillHelp", language))
+                            .font(.caption)
+                            .foregroundStyle(theme.secondary)
                     }
 
                     Button { game.startGame() } label: {
@@ -305,41 +312,68 @@ struct ContentView: View {
     private var gameScreen: some View {
         GeometryReader { geometry in
             let wide = geometry.size.width >= 900 && geometry.size.width > geometry.size.height && !typeSize.isAccessibilitySize
-            ScrollView {
-                if wide {
-                    HStack(alignment: .center, spacing: 28) {
-                        boardSection
-                            .frame(width: max(280, min(geometry.size.height - 54, geometry.size.width - 420)))
-                        VStack(spacing: 16) {
+            if wide {
+                ScrollView {
+                    HStack(alignment: .center, spacing: 32) {
+                        VStack(spacing: 18) {
+                            boardSection
+                            selectionPanel
+                        }
+                        .frame(width: max(280, min(geometry.size.height - 220, geometry.size.width - 390)))
+                        VStack(spacing: 22) {
                             turnStatus
                             clocks
-                            selectionPanel
+                            clockRuleCard
                             matchActions
                         }
-                        .frame(width: 310)
+                        .frame(width: 290)
                     }
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: geometry.size.height - 30)
                     .padding(15)
-                } else {
-                    VStack(spacing: 18) {
+                }
+                .scrollIndicators(.hidden)
+            } else {
+                ScrollView {
+                    VStack(spacing: 16) {
                         clocks
                         turnStatus
                         boardSection
-                        selectionPanel
                         matchActions
                     }
                     .frame(maxWidth: 650)
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
-                    .padding(.bottom, 26)
+                    .padding(.bottom, 16)
                     .frame(maxWidth: .infinity)
                 }
+                .scrollIndicators(.hidden)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    selectionPanel
+                        .frame(maxWidth: 650)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(theme.background)
+                }
             }
-            .scrollIndicators(.hidden)
         }
         .overlay {
             if game.result != nil { resultOverlay }
+        }
+    }
+
+    private var clockRuleCard: some View {
+        SurfaceCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(L10n.text("timeReserve", language), systemImage: "arrow.clockwise")
+                    .font(.headline)
+                Text(L10n.timeSubtitle(game.timeControl, language: language))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(theme.accent)
+                Text(L10n.text(game.timeControl == .unlimited ? "noClock" : "timeRefillHelp", language))
+                    .font(.caption).foregroundStyle(theme.secondary)
+            }
         }
     }
 
@@ -388,7 +422,17 @@ struct ContentView: View {
             Text(game.formattedTime(for: stone))
                 .font(.system(.title2, design: .rounded, weight: .semibold))
                 .monospacedDigit()
-                .foregroundStyle(active ? theme.accent : theme.ink)
+                .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : active ? theme.accent : theme.ink)
+                .accessibilityIdentifier("clock.\(stone.rawValue)")
+            GeometryReader { geometry in
+                Capsule().fill(theme.border.opacity(0.5))
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(game.isTimeLow(for: stone) ? theme.danger : theme.accent)
+                            .frame(width: geometry.size.width * game.timeFraction(for: stone))
+                    }
+            }
+            .frame(height: 5)
+            .accessibilityHidden(true)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -417,43 +461,58 @@ struct ContentView: View {
     }
 
     private var selectionPanel: some View {
-        SurfaceCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: game.notice == nil ? "hand.tap" : "exclamationmark.circle")
-                        .foregroundStyle(game.notice == nil ? theme.accent : theme.danger)
-                    if let notice = game.notice {
-                        Text(L10n.notice(notice, language: language))
-                            .foregroundStyle(theme.danger)
-                    } else if let selected = game.selectedMove {
-                        Text("\(L10n.text("selected", language))  \(selected.coordinate)")
-                            .font(.headline.monospaced())
-                            .accessibilityIdentifier("selectedCoordinate")
-                    } else {
-                        Text(L10n.text(game.isThinking ? "thinkingHint" : "tapToPreview", language))
-                            .foregroundStyle(theme.secondary)
-                    }
+        let stone = game.currentTurn
+        let canPlace = game.selectedMove != nil && stone == game.playerStone &&
+            game.result == nil && !game.isThinking && !game.isValidatingMove
+        let title = game.isValidatingMove ? "validatingMove" : game.isThinking ? "aiThinking" :
+            game.selectedMove == nil ? "choosePoint" : "place"
+        return VStack(spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(spacing: 6) {
+                    StoneDisc(stone: stone, size: 14)
+                    Text(L10n.text(stone == game.playerStone ? "you" : "ai", language))
                 }
-                .font(.subheadline)
-                .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 10) {
+                .font(.caption.weight(.semibold))
+                if let selected = game.selectedMove {
+                    Text(selected.coordinate).font(.caption.monospaced().bold())
+                        .accessibilityIdentifier("selectedCoordinate")
                     Button { game.cancelSelection() } label: {
-                        Image(systemName: "xmark")
+                        Image(systemName: "xmark.circle.fill")
+                            .frame(minWidth: 44, minHeight: 28)
                     }
-                    .buttonStyle(GomokuButtonStyle(primary: false))
-                    .frame(width: 54)
+                    .buttonStyle(.plain)
                     .accessibilityLabel(L10n.text("cancelSelection", language))
-                    .disabled(game.selectedMove == nil || game.isValidatingMove)
-
-                    Button { game.confirmSelectedMove() } label: {
-                        Label(L10n.text(game.isValidatingMove ? "validatingMove" : "place", language), systemImage: "checkmark")
-                    }
-                    .buttonStyle(GomokuButtonStyle())
-                    .accessibilityIdentifier("confirmMove")
-                    .disabled(game.selectedMove == nil || game.currentTurn != game.playerStone ||
-                              game.result != nil || game.isThinking || game.isValidatingMove)
+                    .disabled(game.isValidatingMove)
                 }
+                Spacer(minLength: 0)
+                Text(L10n.text("remainingTime", language)).font(.caption)
+                Text(game.formattedTime(for: stone))
+                    .font(.system(.title3, design: .rounded, weight: .semibold)).monospacedDigit()
+                    .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : theme.ink)
+            }
+            .foregroundStyle(theme.secondary)
+            ReserveMoveButton(
+                title: L10n.text(title, language),
+                coordinate: canPlace ? game.selectedMove?.coordinate : nil,
+                fraction: game.timeFraction(for: stone), urgent: game.isTimeLow(for: stone),
+                busy: game.isThinking || game.isValidatingMove, enabled: canPlace,
+                accessibilityTitle: L10n.text("place", language),
+                accessibilityTime: L10n.text("remainingTime", language) + " " + game.formattedTime(for: stone),
+                action: game.confirmSelectedMove
+            )
+            if let notice = game.notice {
+                Text(L10n.notice(notice, language: language))
+                    .font(.caption).foregroundStyle(theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let clock = game.timeControl.clockConfiguration {
+                HStack {
+                    Label("+\(Int(clock.increment))s / " + L10n.text("perMove", language), systemImage: "arrow.clockwise")
+                    Spacer()
+                    Text(L10n.text("timeCap", language) + " \(Int(clock.ceiling))s")
+                }
+                .font(.caption.weight(.medium)).foregroundStyle(theme.secondary)
+            } else {
+                Text(L10n.text("noClock", language)).font(.caption).foregroundStyle(theme.secondary)
             }
         }
     }

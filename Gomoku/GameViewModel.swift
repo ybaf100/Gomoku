@@ -30,7 +30,8 @@ final class GameViewModel: ObservableObject {
     private let recordsKey = "gomoku.gameRecords"
 
     private var clockTimer: Timer?
-    private var lastClockTick = Date()
+    private let clockNow: () -> TimeInterval
+    private var matchClock: MatchClock?
     private var moves: [RecordedMove] = []
     private var adaptiveSkillAtStart: Int?
     private var aiRequestID: UUID?
@@ -39,7 +40,8 @@ final class GameViewModel: ObservableObject {
     private var validationID: UUID?
     private let recordsQueue = DispatchQueue(label: "gomoku.records", qos: .utility)
 
-    init() {
+    init(clockNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.clockNow = clockNow
         let savedSkill = UserDefaults.standard.object(forKey: adaptiveSkillKey) as? Int
         adaptiveSkill = min(100, max(0, savedSkill ?? 50))
         loadRecords()
@@ -84,8 +86,8 @@ final class GameViewModel: ObservableObject {
         moves = []
         lastAdaptiveAdjustment = nil
         adaptiveSkillAtStart = difficulty == .adaptive ? adaptiveSkill : nil
-        blackTime = timeControl.seconds
-        whiteTime = timeControl.seconds
+        matchClock = MatchClock(configuration: timeControl.clockConfiguration, now: clockNow())
+        publishClock()
         isGameActive = true
 
         startClock()
@@ -203,6 +205,13 @@ final class GameViewModel: ObservableObject {
             return
         }
 
+        // Settle elapsed time at the commit boundary, then replenish exactly
+        // once. A late confirmation cannot rescue a player who has timed out.
+        guard matchClock?.completeMove(by: stone, at: clockNow()) == true else {
+            tickClock()
+            return
+        }
+        publishClock()
         board[move.row][move.column] = stone
         moves.append(RecordedMove(stone: stone, move: move))
         lastMove = move
@@ -241,7 +250,7 @@ final class GameViewModel: ObservableObject {
         let skill = difficulty == .adaptive ? adaptiveSkill : 50
 
         // Cancellation stops abandoned searches; a serial deadline-based search
-        // returns its best completed iteration instead of a random timeout move.
+        // returns its best completed iteration instead of an arbitrary timeout fallback.
         aiTask?.cancel()
         aiTask = Task.detached(priority: .userInitiated) { [weak self] in
             let engine = GomokuAI(difficulty: level, adaptiveSkill: skill)
@@ -275,7 +284,6 @@ final class GameViewModel: ObservableObject {
 
     private func startClock() {
         stopClock()
-        lastClockTick = Date()
 
         guard timeControl != .unlimited else { return }
 
@@ -295,21 +303,25 @@ final class GameViewModel: ObservableObject {
     private func tickClock() {
         guard isGameActive, result == nil else { return }
 
-        let now = Date()
-        let elapsed = now.timeIntervalSince(lastClockTick)
-        lastClockTick = now
+        let expired = matchClock?.settle(at: clockNow())
+        publishClock()
+        if let expired { finish(expired == .black ? .blackTimeout : .whiteTimeout) }
+    }
 
-        if currentTurn == .black, let remaining = blackTime {
-            blackTime = max(0, remaining - elapsed)
-            if blackTime == 0 {
-                finish(.blackTimeout)
-            }
-        } else if currentTurn == .white, let remaining = whiteTime {
-            whiteTime = max(0, remaining - elapsed)
-            if whiteTime == 0 {
-                finish(.whiteTimeout)
-            }
-        }
+    private func publishClock() {
+        blackTime = matchClock?.black
+        whiteTime = matchClock?.white
+    }
+
+    func timeFraction(for stone: Stone) -> Double {
+        guard let ceiling = matchClock?.configuration?.ceiling, ceiling > 0,
+              let remaining = stone == .black ? blackTime : whiteTime else { return 1 }
+        return min(1, max(0, remaining / ceiling))
+    }
+
+    func isTimeLow(for stone: Stone) -> Bool {
+        guard let remaining = stone == .black ? blackTime : whiteTime else { return false }
+        return remaining <= 10
     }
 
     private func finish(_ newResult: GameResult) {
@@ -327,7 +339,8 @@ final class GameViewModel: ObservableObject {
             adaptiveSkill: adaptiveSkillAtStart,
             timeControl: timeControl,
             result: newResult,
-            moves: moves
+            moves: moves,
+            clockConfiguration: matchClock?.configuration
         )
 
         records.insert(record, at: 0)

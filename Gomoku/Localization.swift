@@ -31,7 +31,20 @@ enum L10n {
     }
 
     static func timeSubtitle(_ control: TimeControl, language: AppLanguage) -> String {
-        switch control {
+        guard let clock = control.clockConfiguration else { return text("noClock", language) }
+        return clockDescription(clock, language: language)
+    }
+
+    static func clockDescription(_ clock: ClockConfiguration, language: AppLanguage) -> String {
+        if language == .korean {
+            return "시작 \(Int(clock.initial))초 · 매 수 +\(Int(clock.increment))초 · 최대 \(Int(clock.ceiling))초"
+        }
+        return "Start \(Int(clock.initial))s · +\(Int(clock.increment))s / move · Max \(Int(clock.ceiling))s"
+    }
+
+    static func recordClock(_ record: GameRecord, language: AppLanguage) -> String {
+        if let clock = record.clockConfiguration { return clockDescription(clock, language: language) }
+        switch record.timeControl {
         case .fast: return text("threeMinutes", language)
         case .slow: return text("tenMinutes", language)
         case .unlimited: return text("noClock", language)
@@ -128,6 +141,13 @@ enum L10n {
         "leaveGameMessage": "완료하지 않은 대국은 기보에 저장되지 않습니다.",
         "thinkingHint": "AI가 다음 한 수를 고르고 있어요.",
         "activeTurn": "현재 차례",
+        "remainingTime": "남은 시간",
+        "timeReserve": "시간 충전",
+        "timeRefillHelp": "돌을 놓으면 시간이 충전돼요. 남은 시간은 상한선까지 쌓을 수 있어요.",
+        "choosePoint": "위치를 선택하세요",
+        "timeCap": "상한",
+        "perMove": "매 수",
+        "lowTime": "시간이 얼마 남지 않았어요",
         "recordSaved": "이번 대국이 기보에 저장되었습니다.",
         "historyTitle": "한 수씩, 다시.",
         "historySubtitle": "지난 대국을 천천히 돌아보세요.",
@@ -229,6 +249,13 @@ enum L10n {
         "leaveGameMessage": "An unfinished game will not be saved to your records.",
         "thinkingHint": "AI is finding its next move.",
         "activeTurn": "Current turn",
+        "remainingTime": "Time left",
+        "timeReserve": "Time reserve",
+        "timeRefillHelp": "Each completed move refills your time, up to the reserve limit.",
+        "choosePoint": "Choose a point",
+        "timeCap": "Max",
+        "perMove": "per move",
+        "lowTime": "Time is running low",
         "recordSaved": "This game has been saved to your records.",
         "historyTitle": "Every move, revisited.",
         "historySubtitle": "Take a slower look at your past games.",
