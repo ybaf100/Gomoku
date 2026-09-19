@@ -3,12 +3,11 @@ import Foundation
 
 // A simple editable, geometric Gomoku icon. No external artwork or fonts.
 let size = 1024
-let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
-                             bitsPerSample: 8, samplesPerPixel: 3, hasAlpha: false,
-                             isPlanar: false, colorSpaceName: .deviceRGB,
-                             bytesPerRow: 0, bitsPerPixel: 0)!
+let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8,
+                        bytesPerRow: size * 4, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
 NSGraphicsContext.saveGraphicsState()
-NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
+NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
 NSGraphicsContext.current?.shouldAntialias = true
 func colour(_ hex: Int) -> NSColor {
     NSColor(red: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255,
@@ -36,6 +35,7 @@ for (x, y) in [(372, 232), (512, 372), (652, 512)] {
     colour(0x729682).setStroke(); stone.lineWidth = 3; stone.stroke()
 }
 NSGraphicsContext.restoreGraphicsState()
+let bitmap = NSBitmapImageRep(cgImage: context.makeImage()!)
 let folder = URL(fileURLWithPath: "Gomoku/Assets.xcassets/AppIcon.appiconset", isDirectory: true)
 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 try bitmap.representation(using: .png, properties: [:])!.write(to: folder.appendingPathComponent("AppIcon.png"))
