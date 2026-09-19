@@ -31,7 +31,20 @@ enum L10n {
     }
 
     static func timeSubtitle(_ control: TimeControl, language: AppLanguage) -> String {
-        switch control {
+        guard let clock = control.clockConfiguration else { return text("noClock", language) }
+        return clockDescription(clock, language: language)
+    }
+
+    static func clockDescription(_ clock: ClockConfiguration, language: AppLanguage) -> String {
+        if language == .korean {
+            return "시작 \(Int(clock.initial))초 · 매 수 +\(Int(clock.increment))초 · 최대 \(Int(clock.ceiling))초"
+        }
+        return "Start \(Int(clock.initial))s · +\(Int(clock.increment))s / move · Max \(Int(clock.ceiling))s"
+    }
+
+    static func recordClock(_ record: GameRecord, language: AppLanguage) -> String {
+        if let clock = record.clockConfiguration { return clockDescription(clock, language: language) }
+        switch record.timeControl {
         case .fast: return text("threeMinutes", language)
         case .slow: return text("tenMinutes", language)
         case .unlimited: return text("noClock", language)
@@ -104,6 +117,45 @@ enum L10n {
     }
 
     private static let korean: [String: String] = [
+        "brandSubtitle": "한 수의 여유",
+        "matchSubtitle": "나만의 작은 대국실",
+        "quietPlay": "잠시, 오목 한 판",
+        "heroTitle": "한 수,\n깊어지는 시간.",
+        "heroTitleCompact": "한 수의 여유.",
+        "heroBody": "서두르지 않아도 괜찮아요.\n당신의 속도로, 다음 한 수를 만나보세요.",
+        "renju": "렌주룰",
+        "offline": "오프라인",
+        "newMatch": "새로운 대국",
+        "firstMove": "먼저 둡니다",
+        "secondMove": "AI가 먼저 둡니다",
+        "startHint": "위치를 고르고, 착수 버튼으로 확정하세요.",
+        "appSettings": "앱 설정",
+        "settingsTitle": "나에게 맞는 분위기.",
+        "settingsSubtitle": "편안한 화면과 익숙한 언어로 즐기세요.",
+        "systemAppearanceHelp": "시스템을 선택하면 기기의 라이트·다크 모드와 자동 전환 일정을 따릅니다.",
+        "effectiveAppearance": "현재 적용",
+        "settingsSaved": "설정은 자동으로 저장됩니다.",
+        "done": "완료",
+        "backHome": "처음으로",
+        "leaveGameTitle": "진행 중인 대국을 끝낼까요?",
+        "leaveGameMessage": "완료하지 않은 대국은 기보에 저장되지 않습니다.",
+        "thinkingHint": "AI가 다음 한 수를 고르고 있어요.",
+        "activeTurn": "현재 차례",
+        "remainingTime": "남은 시간",
+        "timeReserve": "시간 충전",
+        "timeRefillHelp": "돌을 놓으면 시간이 충전돼요. 남은 시간은 상한선까지 쌓을 수 있어요.",
+        "choosePoint": "위치를 선택하세요",
+        "timeCap": "상한",
+        "perMove": "매 수",
+        "lowTime": "시간이 얼마 남지 않았어요",
+        "recordSaved": "이번 대국이 기보에 저장되었습니다.",
+        "historyTitle": "한 수씩, 다시.",
+        "historySubtitle": "지난 대국을 천천히 돌아보세요.",
+        "historyEmptyHelp": "첫 대국을 마치면 이곳에 수순이 저장됩니다.",
+        "gamesCount": "판",
+        "savedOnDevice": "이 기기에 저장됨",
+        "moveProgress": "수순",
+        "emptyPoint": "빈 자리",
         "appTitle": "오목",
         "subtitle": "렌주룰 · AI 대전 · 오프라인",
         "yourStone": "내 돌",
@@ -138,6 +190,7 @@ enum L10n {
         "setup": "설정",
         "newGame": "새 게임",
         "place": "착수",
+        "validatingMove": "착수 확인 중…",
         "cancelSelection": "선택 취소",
         "tapToPreview": "빈 교차점을 눌러 착수 위치를 미리 확인하세요.",
         "selected": "선택",
@@ -172,6 +225,45 @@ enum L10n {
     ]
 
     private static let english: [String: String] = [
+        "brandSubtitle": "A little room to think",
+        "matchSubtitle": "Your quiet corner of play",
+        "quietPlay": "A MOMENT TO PLAY",
+        "heroTitle": "A little pause.\nA thoughtful move.",
+        "heroTitleCompact": "A thoughtful move.",
+        "heroBody": "Take your time.\nFind your next move, at your own pace.",
+        "renju": "Renju",
+        "offline": "Offline",
+        "newMatch": "A new game",
+        "firstMove": "You play first",
+        "secondMove": "AI plays first",
+        "startHint": "Choose a point, then confirm your move.",
+        "appSettings": "Settings",
+        "settingsTitle": "Make yourself at home.",
+        "settingsSubtitle": "A comfortable look. A familiar language.",
+        "systemAppearanceHelp": "System follows your device’s Light and Dark appearance, including its automatic schedule.",
+        "effectiveAppearance": "Active appearance",
+        "settingsSaved": "Your preferences are saved automatically.",
+        "done": "Done",
+        "backHome": "Back to home",
+        "leaveGameTitle": "Leave this game?",
+        "leaveGameMessage": "An unfinished game will not be saved to your records.",
+        "thinkingHint": "AI is finding its next move.",
+        "activeTurn": "Current turn",
+        "remainingTime": "Time left",
+        "timeReserve": "Time reserve",
+        "timeRefillHelp": "Each completed move refills your time, up to the reserve limit.",
+        "choosePoint": "Choose a point",
+        "timeCap": "Max",
+        "perMove": "per move",
+        "lowTime": "Time is running low",
+        "recordSaved": "This game has been saved to your records.",
+        "historyTitle": "Every move, revisited.",
+        "historySubtitle": "Take a slower look at your past games.",
+        "historyEmptyHelp": "Finish your first game to find its moves here.",
+        "gamesCount": "games",
+        "savedOnDevice": "Saved on this device",
+        "moveProgress": "Moves",
+        "emptyPoint": "Empty point",
         "appTitle": "Gomoku",
         "subtitle": "Renju · vs AI · Offline",
         "yourStone": "Your stone",
@@ -206,6 +298,7 @@ enum L10n {
         "setup": "Setup",
         "newGame": "New Game",
         "place": "Place",
+        "validatingMove": "Checking move…",
         "cancelSelection": "Cancel selection",
         "tapToPreview": "Tap an empty intersection to preview your move.",
         "selected": "Selected",

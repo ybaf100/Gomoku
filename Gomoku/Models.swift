@@ -62,6 +62,14 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var symbol: String {
+        switch self {
+        case .system: return "circle.lefthalf.filled"
+        case .light: return "sun.max"
+        case .dark: return "moon"
+        }
+    }
+
     var colorScheme: ColorScheme? {
         switch self {
         case .system: return nil
@@ -78,13 +86,15 @@ enum TimeControl: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var id: String { rawValue }
 
-    var seconds: Double? {
+    var clockConfiguration: ClockConfiguration? {
         switch self {
-        case .fast: return 180
-        case .slow: return 600
+        case .fast: return ClockConfiguration(initial: 30, increment: 5, ceiling: 45)
+        case .slow: return ClockConfiguration(initial: 60, increment: 10, ceiling: 90)
         case .unlimited: return nil
         }
     }
+
+    var seconds: Double? { clockConfiguration?.initial }
 }
 
 enum ForbiddenReason: String, Codable, Sendable {
@@ -142,6 +152,8 @@ struct GameRecord: Identifiable, Codable, Sendable {
     let timeControl: TimeControl
     let result: GameResult
     let moves: [RecordedMove]
+    // Missing on older records, which used a fixed total clock.
+    let clockConfiguration: ClockConfiguration?
 
     init(
         id: UUID = UUID(),
@@ -151,7 +163,8 @@ struct GameRecord: Identifiable, Codable, Sendable {
         adaptiveSkill: Int?,
         timeControl: TimeControl,
         result: GameResult,
-        moves: [RecordedMove]
+        moves: [RecordedMove],
+        clockConfiguration: ClockConfiguration? = nil
     ) {
         self.id = id
         self.playedAt = playedAt
@@ -161,5 +174,6 @@ struct GameRecord: Identifiable, Codable, Sendable {
         self.timeControl = timeControl
         self.result = result
         self.moves = moves
+        self.clockConfiguration = clockConfiguration
     }
 }

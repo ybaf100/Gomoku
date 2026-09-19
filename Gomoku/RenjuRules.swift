@@ -107,32 +107,27 @@ enum RenjuRules {
             var next = board
             next[candidateMove.row][candidateMove.column] = .black
 
-            // By definition, a three must become a straight four without
-            // simultaneously becoming a five.
-            if isWinningMove(board: next, move: candidateMove, stone: .black) {
+            // Reject non-shapes BEFORE testing recursive continuation legality.
+            // Almost every empty point on these lines cannot form a straight four.
+            let straightFours = fourThreats(
+                board: next, required: [anchor, candidateMove]
+            ).values.filter { $0.winningPoints.count >= 2 }
+            guard !straightFours.isEmpty else { continue }
+
+            // A three must extend to a straight four through a legal move,
+            // without simultaneously making five, overline, or double-four.
+            if isWinningMove(board: next, move: candidateMove, stone: .black) ||
+                hasOverline(board: next, move: candidateMove) {
                 continue
             }
-
-            if hasOverline(board: next, move: candidateMove) {
-                continue
-            }
-
             if fourThreats(board: next, required: [candidateMove]).count >= 2 {
                 continue
             }
-
-            // RIF 9.3 requires the candidateMove itself to be a legal continuation.
-            // Recursing twice covers ordinary and nested false-three cases while
-            // keeping AI move generation fast on-device.
+            // Preserve the existing nested false-three depth convention.
             if recursionDepth < 2,
                threeSets(board: next, anchor: candidateMove, recursionDepth: recursionDepth + 1).count >= 2 {
                 continue
             }
-
-            let straightFours = fourThreats(
-                board: next,
-                required: [anchor, candidateMove]
-            ).values.filter { $0.winningPoints.count >= 2 }
 
             for threat in straightFours {
                 var three = threat.stones
@@ -157,99 +152,34 @@ enum RenjuRules {
 
         var threats: [String: FourThreat] = [:]
 
-        for winningPoint in lineCandidates(around: anchor) {
-            guard board[winningPoint.row][winningPoint.column] == .empty else {
-                continue
-            }
+        // Any relevant five-cell segment MUST contain the anchor. There are
+        // at most 4 × 5 such windows, independent of how full the board is.
+        for direction in directions {
+            for offset in -4...0 {
+                let segment = (0..<5).map { index in
+                    Move(row: anchor.row + direction.dr * (offset + index),
+                         column: anchor.column + direction.dc * (offset + index))
+                }
+                guard segment.allSatisfy({ isInside($0) }),
+                      required.allSatisfy({ segment.contains($0) }) else { continue }
+                let before = Move(row: segment[0].row - direction.dr,
+                                  column: segment[0].column - direction.dc)
+                let after = Move(row: segment[4].row + direction.dr,
+                                 column: segment[4].column + direction.dc)
+                if isInside(before), board[before.row][before.column] == .black { continue }
+                if isInside(after), board[after.row][after.column] == .black { continue }
 
-            var next = board
-            next[winningPoint.row][winningPoint.column] = .black
-
-            let segments = exactFiveSegments(
-                board: next,
-                required: required + [winningPoint]
-            )
-
-            for segment in segments {
-                var stones = Set(segment)
-                stones.remove(winningPoint)
-
-                guard stones.count == 4 else { continue }
-
+                let stones = Set(segment.filter { board[$0.row][$0.column] == .black })
+                let empty = segment.filter { board[$0.row][$0.column] == .empty }
+                guard stones.count == 4, empty.count == 1,
+                      required.allSatisfy({ stones.contains($0) }) else { continue }
                 let key = canonicalKey(stones)
-                var threat = threats[key] ?? FourThreat(
-                    stones: stones,
-                    winningPoints: []
-                )
-                threat.winningPoints.insert(winningPoint)
+                var threat = threats[key] ?? FourThreat(stones: stones, winningPoints: [])
+                threat.winningPoints.insert(empty[0])
                 threats[key] = threat
             }
         }
-
         return threats
-    }
-
-    private static func exactFiveSegments(
-        board: [[Stone]],
-        required: [Move]
-    ) -> [[Move]] {
-        var result: [[Move]] = []
-
-        for row in 0..<boardSize {
-            for column in 0..<boardSize {
-                for direction in directions {
-                    let end = Move(
-                        row: row + direction.dr * 4,
-                        column: column + direction.dc * 4
-                    )
-
-                    guard isInside(end) else { continue }
-
-                    var segment: [Move] = []
-                    var allBlack = true
-
-                    for offset in 0..<5 {
-                        let point = Move(
-                            row: row + direction.dr * offset,
-                            column: column + direction.dc * offset
-                        )
-
-                        if board[point.row][point.column] != .black {
-                            allBlack = false
-                            break
-                        }
-
-                        segment.append(point)
-                    }
-
-                    guard allBlack else { continue }
-
-                    let before = Move(
-                        row: row - direction.dr,
-                        column: column - direction.dc
-                    )
-                    let after = Move(
-                        row: end.row + direction.dr,
-                        column: end.column + direction.dc
-                    )
-
-                    if isInside(before), board[before.row][before.column] == .black {
-                        continue
-                    }
-
-                    if isInside(after), board[after.row][after.column] == .black {
-                        continue
-                    }
-
-                    let segmentSet = Set(segment)
-                    if required.allSatisfy({ segmentSet.contains($0) }) {
-                        result.append(segment)
-                    }
-                }
-            }
-        }
-
-        return result
     }
 
     private static func hasOverline(board: [[Stone]], move: Move) -> Bool {
@@ -349,3 +279,4 @@ enum RenjuRules {
         move.column < boardSize
     }
 }
+

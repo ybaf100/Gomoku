@@ -17,6 +17,7 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var lastMove: Move?
     @Published private(set) var selectedMove: Move?
     @Published private(set) var isThinking = false
+    @Published private(set) var isValidatingMove = false
     @Published private(set) var blackTime: Double?
     @Published private(set) var whiteTime: Double?
     @Published private(set) var notice: GameNotice?
@@ -29,13 +30,18 @@ final class GameViewModel: ObservableObject {
     private let recordsKey = "gomoku.gameRecords"
 
     private var clockTimer: Timer?
-    private var lastClockTick = Date()
+    private let clockNow: () -> TimeInterval
+    private var matchClock: MatchClock?
     private var moves: [RecordedMove] = []
     private var adaptiveSkillAtStart: Int?
     private var aiRequestID: UUID?
-    private var aiFallbackMove: Move?
+    private var aiTask: Task<Void, Never>?
+    private var validationTask: Task<Void, Never>?
+    private var validationID: UUID?
+    private let recordsQueue = DispatchQueue(label: "gomoku.records", qos: .utility)
 
-    init() {
+    init(clockNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.clockNow = clockNow
         let savedSkill = UserDefaults.standard.object(forKey: adaptiveSkillKey) as? Int
         adaptiveSkill = min(100, max(0, savedSkill ?? 50))
         loadRecords()
@@ -47,6 +53,8 @@ final class GameViewModel: ObservableObject {
         guard result == nil else {
             return resultTitle(language: language)
         }
+
+        if isValidatingMove { return L10n.text("validatingMove", language) }
 
         if currentTurn == playerStone {
             return L10n.text("yourTurn", language)
@@ -78,8 +86,8 @@ final class GameViewModel: ObservableObject {
         moves = []
         lastAdaptiveAdjustment = nil
         adaptiveSkillAtStart = difficulty == .adaptive ? adaptiveSkill : nil
-        blackTime = timeControl.seconds
-        whiteTime = timeControl.seconds
+        matchClock = MatchClock(configuration: timeControl.clockConfiguration, now: clockNow())
+        publishClock()
         isGameActive = true
 
         startClock()
@@ -101,7 +109,8 @@ final class GameViewModel: ObservableObject {
         guard isGameActive,
               result == nil,
               currentTurn == playerStone,
-              !isThinking else {
+              !isThinking,
+              !isValidatingMove else {
             return
         }
 
@@ -115,6 +124,7 @@ final class GameViewModel: ObservableObject {
     }
 
     func cancelSelection() {
+        guard !isValidatingMove else { return }
         selectedMove = nil
         notice = nil
     }
@@ -123,7 +133,8 @@ final class GameViewModel: ObservableObject {
         guard isGameActive,
               result == nil,
               currentTurn == playerStone,
-              !isThinking else {
+              !isThinking,
+              !isValidatingMove else {
             return
         }
 
@@ -138,14 +149,39 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        if playerStone == .black,
-           let forbidden = RenjuRules.forbiddenReason(board: board, move: move) {
+        let snapshot = board
+        let stone = playerStone
+        let requestID = UUID()
+        validationID = requestID
+        isValidatingMove = true
+        notice = nil
+
+        // Even an unusually complex forbidden-pattern check must never occupy
+        // the main actor. Lock selection until this exact snapshot is resolved.
+        validationTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let forbidden = stone == .black
+                ? RenjuRules.forbiddenReason(board: snapshot, move: move) : nil
+            guard !Task.isCancelled else { return }
+            await self?.completeValidation(requestID, snapshot: snapshot, move: move,
+                                           stone: stone, forbidden: forbidden)
+        }
+    }
+
+    private func completeValidation(_ requestID: UUID, snapshot: [[Stone]], move: Move,
+                                    stone: Stone, forbidden: ForbiddenReason?) {
+        guard validationID == requestID, isGameActive, result == nil,
+              currentTurn == stone, board == snapshot else { return }
+        validationID = nil
+        validationTask = nil
+        isValidatingMove = false
+        // Charge elapsed time before accepting a move, including validation.
+        tickClock()
+        guard result == nil else { return }
+        if let forbidden {
             notice = .forbidden(forbidden)
             return
         }
-
-        notice = nil
-        applyLegalMove(move, stone: playerStone)
+        applyLegalMove(move, stone: stone)
     }
 
     func formattedTime(for stone: Stone) -> String {
@@ -159,7 +195,8 @@ final class GameViewModel: ObservableObject {
 
     func clearRecords() {
         records.removeAll()
-        UserDefaults.standard.removeObject(forKey: recordsKey)
+        let key = recordsKey
+        recordsQueue.async { UserDefaults.standard.removeObject(forKey: key) }
     }
 
     private func applyLegalMove(_ move: Move, stone: Stone) {
@@ -168,6 +205,13 @@ final class GameViewModel: ObservableObject {
             return
         }
 
+        // Settle elapsed time at the commit boundary, then replenish exactly
+        // once. A late confirmation cannot rescue a player who has timed out.
+        guard matchClock?.completeMove(by: stone, at: clockNow()) == true else {
+            tickClock()
+            return
+        }
+        publishClock()
         board[move.row][move.column] = stone
         moves.append(RecordedMove(stone: stone, move: move))
         lastMove = move
@@ -199,76 +243,47 @@ final class GameViewModel: ObservableObject {
 
         let requestID = UUID()
         aiRequestID = requestID
-        aiFallbackMove = nil
         isThinking = true
-
         let snapshot = board
         let stone = aiStone
         let level = difficulty
         let skill = difficulty == .adaptive ? adaptiveSkill : 50
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        // Cancellation stops abandoned searches; a serial deadline-based search
+        // returns its best completed iteration instead of an arbitrary timeout fallback.
+        aiTask?.cancel()
+        aiTask = Task.detached(priority: .userInitiated) { [weak self] in
             let engine = GomokuAI(difficulty: level, adaptiveSkill: skill)
-
-            // Compute a cheap legal fallback first. If the deeper search ever
-            // reaches the hard 2.85 s wall, this move is used immediately.
-            let fallback = engine.quickFallback(board: snapshot, stone: stone)
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.aiRequestID == requestID else { return }
-                self.aiFallbackMove = fallback
-            }
-
-            let move = engine.chooseMove(
-                board: snapshot,
-                stone: stone,
-                timeLimit: 2.35
-            ) ?? fallback
-
-            DispatchQueue.main.async { [weak self] in
-                guard let self,
-                      self.aiRequestID == requestID,
-                      self.isGameActive,
-                      self.result == nil,
-                      self.currentTurn == stone else {
-                    return
-                }
-
-                self.aiRequestID = nil
-                self.isThinking = false
-
-                if let move {
-                    self.applyLegalMove(move, stone: stone)
-                } else {
-                    self.finish(.draw)
-                }
-            }
+            let move = engine.chooseMove(board: snapshot, stone: stone, timeLimit: 2.2)
+            guard !Task.isCancelled else { return }
+            await self?.completeAIMove(requestID, move: move, stone: stone)
         }
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.85) { [weak self] in
-            guard let self,
-                  self.aiRequestID == requestID,
-                  self.isGameActive,
-                  self.result == nil,
-                  self.currentTurn == stone,
-                  let fallback = self.aiFallbackMove else {
-                return
-            }
-
-            self.aiRequestID = nil
-            self.isThinking = false
-            self.applyLegalMove(fallback, stone: stone)
-        }
+    private func completeAIMove(_ requestID: UUID, move: Move?, stone: Stone) {
+        guard aiRequestID == requestID, isGameActive, result == nil,
+              currentTurn == stone else { return }
+        aiRequestID = nil
+        aiTask = nil
+        isThinking = false
+        tickClock()
+        guard result == nil else { return }
+        if let move { applyLegalMove(move, stone: stone) }
+        else { finish(.draw) }
     }
 
     private func invalidateAI() {
         aiRequestID = nil
-        aiFallbackMove = nil
+        aiTask?.cancel()
+        aiTask = nil
+        validationID = nil
+        validationTask?.cancel()
+        validationTask = nil
+        isValidatingMove = false
     }
 
     private func startClock() {
         stopClock()
-        lastClockTick = Date()
 
         guard timeControl != .unlimited else { return }
 
@@ -288,21 +303,25 @@ final class GameViewModel: ObservableObject {
     private func tickClock() {
         guard isGameActive, result == nil else { return }
 
-        let now = Date()
-        let elapsed = now.timeIntervalSince(lastClockTick)
-        lastClockTick = now
+        let expired = matchClock?.settle(at: clockNow())
+        publishClock()
+        if let expired { finish(expired == .black ? .blackTimeout : .whiteTimeout) }
+    }
 
-        if currentTurn == .black, let remaining = blackTime {
-            blackTime = max(0, remaining - elapsed)
-            if blackTime == 0 {
-                finish(.blackTimeout)
-            }
-        } else if currentTurn == .white, let remaining = whiteTime {
-            whiteTime = max(0, remaining - elapsed)
-            if whiteTime == 0 {
-                finish(.whiteTimeout)
-            }
-        }
+    private func publishClock() {
+        blackTime = matchClock?.black
+        whiteTime = matchClock?.white
+    }
+
+    func timeFraction(for stone: Stone) -> Double {
+        guard let ceiling = matchClock?.configuration?.ceiling, ceiling > 0,
+              let remaining = stone == .black ? blackTime : whiteTime else { return 1 }
+        return min(1, max(0, remaining / ceiling))
+    }
+
+    func isTimeLow(for stone: Stone) -> Bool {
+        guard let remaining = stone == .black ? blackTime : whiteTime else { return false }
+        return remaining <= 10
     }
 
     private func finish(_ newResult: GameResult) {
@@ -320,7 +339,8 @@ final class GameViewModel: ObservableObject {
             adaptiveSkill: adaptiveSkillAtStart,
             timeControl: timeControl,
             result: newResult,
-            moves: moves
+            moves: moves,
+            clockConfiguration: matchClock?.configuration
         )
 
         records.insert(record, at: 0)
@@ -377,13 +397,18 @@ final class GameViewModel: ObservableObject {
     }
 
     private func saveRecords() {
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(records)
-            UserDefaults.standard.set(data, forKey: recordsKey)
-        } catch {
-            // A failed history write must never interrupt a live game.
+        let snapshot = records
+        let key = recordsKey
+        // Preserve save/clear ordering without encoding up to 200 games on UI.
+        recordsQueue.async {
+            do {
+                let encoder = JSONEncoder()
+                encoder.dateEncodingStrategy = .iso8601
+                let data = try encoder.encode(snapshot)
+                UserDefaults.standard.set(data, forKey: key)
+            } catch {
+                // A failed history write must never interrupt a live game.
+            }
         }
     }
 }

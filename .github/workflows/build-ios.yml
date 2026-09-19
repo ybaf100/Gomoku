@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -51,4 +54,102 @@ jobs:
           name: Gomoku-iOS
           path: Gomoku.ipa
           if-no-files-found: error
+          retention-days: 14
+
+  engine-check:
+    runs-on: macos-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile optimized engine and confirmation regressions
+        run: |
+          mkdir -p build
+          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift Gomoku/Localization.swift \
+            Gomoku/RenjuRules.swift Gomoku/GomokuAI.swift Gomoku/GameViewModel.swift \
+            Tests/EngineChecks.swift -o build/engine-checks
+      - name: Verify rules, tactics, deadline and UI responsiveness
+        run: build/engine-checks
+      - name: Measure the previous forbidden-check implementation
+        run: |
+          git fetch --depth=1 origin 36435175efd3a4564277ba2fcee992ed05f00d80
+          git show 36435175efd3a4564277ba2fcee992ed05f00d80:Gomoku/RenjuRules.swift > build/BeforeRules.swift
+          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift build/BeforeRules.swift Tests/BenchmarkBefore.swift -o build/before-check
+          python3 - <<'PYTHON'
+          import subprocess
+          try:
+              subprocess.run(['build/before-check'], timeout=20, check=True)
+          except subprocess.TimeoutExpired:
+              print('Before: forbidden check exceeded 20 seconds on this CI runner')
+          PYTHON
+
+  design-check:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPad, iPhone]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Select simulators
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))['devices']
+          ios = [d for runtime, entries in devices.items() if 'iOS' in runtime for d in entries]
+          ipad = next((d for d in ios if 'iPad Pro' in d['name'] and '13-inch' in d['name']), next(d for d in ios if 'iPad' in d['name']))
+          phone = next(d for d in ios if 'iPhone' in d['name'] and 'Pro Max' not in d['name'])
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write('IPAD_ID=' + ipad['udid'] + '\nIPHONE_ID=' + phone['udid'] + '\n')
+          PY
+      - name: Verify themes, saved preferences, replay and confirmed moves on iPad
+        if: matrix.device == 'iPad'
+        run: |
+          xcrun simctl boot "$IPAD_ID"
+          xcrun simctl bootstatus "$IPAD_ID" -b
+          xcrun simctl status_bar "$IPAD_ID" override --time '9:41' --batteryState charged --batteryLevel 100
+          xcrun simctl ui "$IPAD_ID" appearance light
+          xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
+            -destination "platform=iOS Simulator,id=$IPAD_ID" \
+            -parallel-testing-enabled NO -resultBundlePath build/Design-iPad.xcresult \
+            -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow CODE_SIGNING_ALLOWED=NO
+      - name: Verify system appearance
+        if: matrix.device == 'iPad'
+        run: |
+          xcrun simctl ui "$IPAD_ID" appearance dark
+          xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
+            -destination "platform=iOS Simulator,id=$IPAD_ID" \
+            -parallel-testing-enabled NO -resultBundlePath build/Design-System.xcresult \
+            -only-testing:GomokuUITests/AppearanceTests/testSystemFollowsDarkAndCanBeRestored CODE_SIGNING_ALLOWED=NO
+      - name: Verify compact layout on iPhone
+        if: matrix.device == 'iPhone'
+        run: |
+          xcrun simctl boot "$IPHONE_ID"
+          xcrun simctl bootstatus "$IPHONE_ID" -b
+          xcrun simctl ui "$IPHONE_ID" appearance light
+          xcrun simctl status_bar "$IPHONE_ID" override --time '9:41' --batteryState charged --batteryLevel 100
+          xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
+            -destination "platform=iOS Simulator,id=$IPHONE_ID" \
+            -parallel-testing-enabled NO -resultBundlePath build/Design-iPhone.xcresult \
+            -only-testing:GomokuUITests/AppearanceTests/testCompactLayout CODE_SIGNING_ALLOWED=NO
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          mkdir -p build/DesignPreviews
+          for result in build/Design-*.xcresult; do
+            [ -d "$result" ] || continue
+            name=$(basename "$result" .xcresult)
+            xcrun xcresulttool export attachments --path "$result" --output-path "build/DesignPreviews/$name"
+          done
+      - name: Upload design previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gomoku-Design-Previews-${{ matrix.device }}
+          path: build/DesignPreviews
+          if-no-files-found: warn
           retention-days: 14
