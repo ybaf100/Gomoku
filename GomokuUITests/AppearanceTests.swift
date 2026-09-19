@@ -124,4 +124,47 @@ final class AppearanceTests: XCTestCase {
         XCTAssertTrue(confirm.isEnabled)
         screenshot("16-phone-game-dark")
     }
+
+    func testPlayerOptionsAndForbiddenMarkers() {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        tap("stone.random")
+        tap("difficulty.adaptive")
+        tap("time.unlimited")
+        XCTAssertTrue(app.staticTexts["nextStone"].label.contains("흑"))
+        screenshot("17-random-adaptive-setup")
+        tap("startGame")
+        XCTAssertEqual(app.staticTexts["playerLabel.1"].label, "나")
+        tap("backHome")
+        tap("confirmLeaveGame")
+        tap("openHistory")
+        XCTAssertTrue(app.staticTexts["기권패"].firstMatch.waitForExistence(timeout: 10))
+        screenshot("18-resignation-record")
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing"]
+        app.launch()
+        XCTAssertTrue(app.buttons["stone.random"].isSelected)
+        tap("difficulty.adaptive")
+        tap("time.unlimited")
+        XCTAssertTrue(app.staticTexts["nextStone"].label.contains("백"))
+        tap("startGame")
+        XCTAssertEqual(app.staticTexts["playerLabel.2"].label, "나")
+        XCTAssertFalse(app.staticTexts["forbiddenLegend"].exists)
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-reset", "-ui-testing-forbidden"]
+        app.launch()
+        let forbidden = app.buttons["intersection.H8"]
+        XCTAssertTrue(forbidden.waitForExistence(timeout: 10))
+        expectation(for: NSPredicate(format: "value CONTAINS %@", "33"), evaluatedWith: forbidden)
+        waitForExpectations(timeout: 20)
+        tap("intersection.H8")
+        XCTAssertFalse(app.buttons["confirmMove"].isEnabled)
+        screenshot("19-forbidden-light")
+        tap("openSettings")
+        tap("appearance.dark")
+        expectAppearance("dark")
+        tap("closeSettings")
+        screenshot("20-forbidden-dark")
+    }
 }

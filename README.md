@@ -6,7 +6,9 @@ Offline iOS/iPadOS Gomoku app for human-vs-AI play.
 
 - 15×15 board
 - Human vs local AI
-- Player can choose Black or White
+- Player can choose Black, White or Random
+- Random draws either colour for each Easy/Normal/Hard game; Adaptive + Random alternates Black, White, Black, starting with Black
+- The stone preference and next Adaptive colour are saved on the device; fixed-colour games do not advance the sequence
 - Easy / Normal / Hard / Adaptive AI (starts at 50/100)
 - Fast reserve: start 30 seconds, +5 seconds per completed move, capped at 45 seconds
 - Slow reserve: start 60 seconds, +10 seconds per completed move, capped at 90 seconds
@@ -16,6 +18,8 @@ Offline iOS/iPadOS Gomoku app for human-vs-AI play.
 - Tap to preview, then confirm with the Place button
 - Local records and move-by-move replay (up to 200 completed games)
 - Korean and English, switchable in Settings
+- Forbidden points show 33 / 44 / 6+ markers only on the human Black player's turn
+- Leaving or restarting an unfinished game records a resignation loss, including Adaptive skill adjustment
 
 ## Appearance
 
@@ -36,6 +40,14 @@ Black uses Renju forbidden-move restrictions:
 - White wins with five or more
 
 The rules engine also checks legal continuations when evaluating open threes. The app uses free opening play rather than an RIF tournament opening protocol.
+
+When you play Black, forbidden empty intersections are marked with **33** (double-three), **44** (double-four), or **6+** (overline) during your turn. Tapping a marker explains the restriction. The map is calculated off the main actor from the same rules used to validate moves, and cleared when the turn changes or the game ends. White players and replay views do not see these hints. Cancelled scans cannot publish markers into another game.
+
+## Colour assignment and resignation
+
+Select **Random** under Your stone. Easy, Normal and Hard make an independent random choice at each game start. Adaptive uses a saved alternating sequence, initially Black then White. The next colour is shown in setup. Starting a game consumes one assignment, including an in-game restart; previewing moves and opening settings do not. Fixed Black/White and non-Adaptive games do not consume the Adaptive sequence. Records always store the actual colour used.
+
+The in-game Home and New Game actions ask for confirmation. Confirming while the game is unfinished records exactly one resignation loss with its played moves and updates Adaptive difficulty as a loss. Leaving an already completed game preserves its result. This applies to these in-app actions; force-quitting the process is not a resignation event.
 
 ## Build an IPA
 

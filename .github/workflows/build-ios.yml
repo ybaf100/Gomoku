@@ -116,7 +116,8 @@ jobs:
           xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
             -destination "platform=iOS Simulator,id=$IPAD_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPad.xcresult \
-            -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow CODE_SIGNING_ALLOWED=NO
+            -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow \
+            -only-testing:GomokuUITests/AppearanceTests/testPlayerOptionsAndForbiddenMarkers CODE_SIGNING_ALLOWED=NO
       - name: Verify system appearance
         if: matrix.device == 'iPad'
         run: |

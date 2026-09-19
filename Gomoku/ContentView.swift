@@ -35,6 +35,11 @@ struct ContentView: View {
             .foregroundStyle(theme.ink)
         }
         .tint(theme.accent)
+        .onAppear {
+            #if DEBUG
+            UITestSupport.prepareGameIfRequested(game)
+            #endif
+        }
         .background {
             WindowAppearance(mode: appearance)
                 .frame(width: 0, height: 0)
@@ -60,6 +65,7 @@ struct ContentView: View {
                 pendingAction = nil
                 if action == .restart { game.startGame() } else { game.backToSetup() }
             }
+            .accessibilityIdentifier("confirmLeaveGame")
             Button(L10n.text("cancel", language), role: .cancel) { pendingAction = nil }
         } message: {
             Text(L10n.text("leaveGameMessage", language))
@@ -70,8 +76,12 @@ struct ContentView: View {
         HStack(spacing: 12) {
             if game.isGameActive {
                 QuietIconButton(title: L10n.text("backHome", language), symbol: "arrow.left") {
-                    pendingAction = .home
-                    showLeaveConfirmation = true
+                    if game.result == nil {
+                        pendingAction = .home
+                        showLeaveConfirmation = true
+                    } else {
+                        game.backToSetup()
+                    }
                 }
                 .accessibilityIdentifier("backHome")
             } else {
@@ -184,6 +194,26 @@ struct ContentView: View {
                             stoneChoice(.black)
                             stoneChoice(.white)
                         }
+                        SelectionTile(selected: game.stoneSelection == .random, action: { game.stoneSelection = .random }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "shuffle").font(.title3).frame(width: 30)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(L10n.text("randomStone", language)).font(.subheadline.bold())
+                                    Text(L10n.text(game.difficulty == .adaptive ? "alternatingStoneHelp" : "randomStoneHelp", language))
+                                        .font(.caption)
+                                }
+                                Spacer(minLength: 0)
+                                if game.stoneSelection == .random {
+                                    Image(systemName: "checkmark.circle.fill").font(.caption)
+                                }
+                            }
+                        }
+                        .accessibilityIdentifier("stone.random")
+                        if game.stoneSelection == .random && game.difficulty == .adaptive {
+                            Text(L10n.text("nextStone", language) + " · " + L10n.stone(game.nextAdaptiveStone, language: language))
+                                .font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                                .accessibilityIdentifier("nextStone")
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -284,7 +314,8 @@ struct ContentView: View {
     }
 
     private func stoneChoice(_ stone: Stone) -> some View {
-        SelectionTile(selected: game.playerStone == stone, action: { game.playerStone = stone }) {
+        let choice: StoneSelection = stone == .black ? .black : .white
+        return SelectionTile(selected: game.stoneSelection == choice, action: { game.stoneSelection = choice }) {
             HStack(spacing: 12) {
                 StoneDisc(stone: stone, size: 30)
                 VStack(alignment: .leading, spacing: 4) {
@@ -292,7 +323,7 @@ struct ContentView: View {
                     Text(L10n.text(stone == .black ? "firstMove" : "secondMove", language)).font(.caption)
                 }
                 Spacer(minLength: 0)
-                if game.playerStone == stone {
+                if game.stoneSelection == choice {
                     Image(systemName: "checkmark.circle.fill").font(.caption)
                 }
             }
@@ -383,7 +414,9 @@ struct ContentView: View {
                 board: game.board, lastMove: game.lastMove,
                 selectedMove: game.selectedMove, previewStone: game.playerStone,
                 enabled: game.currentTurn == game.playerStone && game.result == nil && !game.isThinking && !game.isValidatingMove,
-                language: language, onSelect: game.selectMove
+                language: language,
+                forbiddenMoves: game.showsForbiddenMoves ? game.forbiddenMoves : [:],
+                onSelect: game.selectMove
             )
             HStack {
                 Text("RENJU · 15 × 15").tracking(1.5)
@@ -394,6 +427,11 @@ struct ContentView: View {
             .font(.system(.caption2, design: .rounded, weight: .medium))
             .foregroundStyle(theme.secondary)
             .padding(.horizontal, 8)
+            if game.showsForbiddenMoves && !game.forbiddenMoves.isEmpty {
+                Text(L10n.text("forbiddenLegend", language))
+                    .font(.caption).foregroundStyle(theme.danger)
+                    .accessibilityIdentifier("forbiddenLegend")
+            }
         }
     }
 
@@ -411,6 +449,7 @@ struct ContentView: View {
                 StoneDisc(stone: stone, size: 18)
                 Text(L10n.text(stone == game.playerStone ? "you" : "ai", language))
                     .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("playerLabel.\(stone.rawValue)")
                 Spacer(minLength: 2)
                 if active {
                     Image(systemName: "smallcircle.filled.circle")

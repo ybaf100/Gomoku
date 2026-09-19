@@ -94,12 +94,19 @@ enum L10n {
             return playerStone == .black ? text("timeoutAIWins", language) : text("aiTimeoutYouWin", language)
         case .whiteTimeout:
             return playerStone == .white ? text("timeoutAIWins", language) : text("aiTimeoutYouWin", language)
+        case .blackResigned:
+            return playerStone == .black ? text("resignedLoss", language) : text("opponentResignedWin", language)
+        case .whiteResigned:
+            return playerStone == .white ? text("resignedLoss", language) : text("opponentResignedWin", language)
         case .draw:
             return text("draw", language)
         }
     }
 
     static func recordResult(_ record: GameRecord, language: AppLanguage) -> String {
+        if record.result == .blackResigned || record.result == .whiteResigned {
+            return text(record.result.playerWon(playerStone: record.playerStone) ? "win" : "resignedLoss", language)
+        }
         if record.result == .draw {
             return text("draw", language)
         }
@@ -138,7 +145,7 @@ enum L10n {
         "done": "완료",
         "backHome": "처음으로",
         "leaveGameTitle": "진행 중인 대국을 끝낼까요?",
-        "leaveGameMessage": "완료하지 않은 대국은 기보에 저장되지 않습니다.",
+        "leaveGameMessage": "나가거나 새 게임을 시작하면 현재 대국은 기권패로 기록됩니다. 지능형 AI 수준에도 반영됩니다.",
         "thinkingHint": "AI가 다음 한 수를 고르고 있어요.",
         "activeTurn": "현재 차례",
         "remainingTime": "남은 시간",
@@ -161,6 +168,10 @@ enum L10n {
         "yourStone": "내 돌",
         "black": "흑",
         "white": "백",
+        "randomStone": "랜덤",
+        "randomStoneHelp": "매 판 흑·백을 무작위로 배정해요",
+        "alternatingStoneHelp": "처음은 흑, 이후 매 판 흑·백을 번갈아 배정해요",
+        "nextStone": "다음 대국의 내 돌",
         "aiDifficulty": "AI 난이도",
         "easy": "쉬움",
         "normal": "보통",
@@ -197,6 +208,7 @@ enum L10n {
         "occupied": "이미 돌이 놓인 자리입니다.",
         "selectMove": "먼저 빈 자리를 선택하세요.",
         "forbidden": "금수",
+        "forbiddenLegend": "금수 · 33 삼삼 · 44 사사 · 6+ 장목",
         "overline": "장목",
         "doubleFour": "44",
         "doubleThree": "33",
@@ -204,6 +216,8 @@ enum L10n {
         "aiWins": "AI 승리",
         "timeoutAIWins": "시간패 · AI 승리",
         "aiTimeoutYouWin": "AI 시간패 · 승리",
+        "resignedLoss": "기권패",
+        "opponentResignedWin": "상대 기권 · 승리",
         "draw": "무승부",
         "playAgain": "다시 하기",
         "records": "이전 경기 기보",
@@ -246,7 +260,7 @@ enum L10n {
         "done": "Done",
         "backHome": "Back to home",
         "leaveGameTitle": "Leave this game?",
-        "leaveGameMessage": "An unfinished game will not be saved to your records.",
+        "leaveGameMessage": "Leaving or starting a new game records a resignation loss. It also counts toward your Adaptive AI level.",
         "thinkingHint": "AI is finding its next move.",
         "activeTurn": "Current turn",
         "remainingTime": "Time left",
@@ -269,6 +283,10 @@ enum L10n {
         "yourStone": "Your stone",
         "black": "Black",
         "white": "White",
+        "randomStone": "Random",
+        "randomStoneHelp": "Randomly choose Black or White each game",
+        "alternatingStoneHelp": "Start as Black, then alternate colours each game",
+        "nextStone": "Your next stone",
         "aiDifficulty": "AI difficulty",
         "easy": "Easy",
         "normal": "Normal",
@@ -305,6 +323,7 @@ enum L10n {
         "occupied": "A stone is already on that point.",
         "selectMove": "Select an empty point first.",
         "forbidden": "Forbidden",
+        "forbiddenLegend": "Forbidden · 33 double-three · 44 double-four · 6+ overline",
         "overline": "Overline",
         "doubleFour": "Double-four",
         "doubleThree": "Double-three",
@@ -312,6 +331,8 @@ enum L10n {
         "aiWins": "AI wins",
         "timeoutAIWins": "Time out · AI wins",
         "aiTimeoutYouWin": "AI timed out · You win",
+        "resignedLoss": "Loss by resignation",
+        "opponentResignedWin": "Opponent resigned · You win",
         "draw": "Draw",
         "playAgain": "Play Again",
         "records": "Previous game records",

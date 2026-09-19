@@ -92,6 +92,22 @@ enum RenjuRules {
         return stone == .white
     }
 
+    static func forbiddenMoves(board: [[Stone]], isCancelled: () -> Bool = { false }) -> [Move: ForbiddenReason] {
+        guard board.joined().filter({ $0 == .black }).count >= 4 else { return [:] }
+        var markers: [Move: ForbiddenReason] = [:]
+        for row in 0..<boardSize {
+            for column in 0..<boardSize {
+                if isCancelled() { return [:] }
+                guard board[row][column] == .empty else { continue }
+                let move = Move(row: row, column: column)
+                if let reason = forbiddenReason(board: board, move: move) {
+                    markers[move] = reason
+                }
+            }
+        }
+        return markers
+    }
+
     private static func threeSets(
         board: [[Stone]],
         anchor: Move,
@@ -279,4 +295,3 @@ enum RenjuRules {
         move.column < boardSize
     }
 }
-
