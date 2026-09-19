@@ -8,7 +8,12 @@ final class GameViewModel: ObservableObject {
         count: RenjuRules.boardSize
     )
 
-    @Published var playerStone: Stone = .black
+    @Published private(set) var playerStone: Stone = .black
+    @Published var stoneSelection: StoneSelection = .black {
+        didSet { defaults.set(stoneSelection.rawValue, forKey: stoneSelectionKey) }
+    }
+    @Published private(set) var nextAdaptiveStone: Stone = .black
+    @Published private(set) var forbiddenMoves: [Move: ForbiddenReason] = [:]
     @Published var difficulty: AIDifficulty = .normal
     @Published var timeControl: TimeControl = .fast
 
@@ -28,6 +33,10 @@ final class GameViewModel: ObservableObject {
 
     private let adaptiveSkillKey = "gomoku.adaptiveSkill"
     private let recordsKey = "gomoku.gameRecords"
+    private let stoneSelectionKey = "gomoku.stoneSelection"
+    private let nextAdaptiveStoneKey = "gomoku.nextAdaptiveStone"
+    private let defaults: UserDefaults
+    private let randomBlack: () -> Bool
 
     private var clockTimer: Timer?
     private let clockNow: () -> TimeInterval
@@ -38,16 +47,28 @@ final class GameViewModel: ObservableObject {
     private var aiTask: Task<Void, Never>?
     private var validationTask: Task<Void, Never>?
     private var validationID: UUID?
+    private var forbiddenTask: Task<Void, Never>?
+    private var forbiddenRequestID: UUID?
     private let recordsQueue = DispatchQueue(label: "gomoku.records", qos: .utility)
 
-    init(clockNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    init(clockNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         defaults: UserDefaults = .standard,
+         randomBlack: @escaping () -> Bool = { Bool.random() }) {
         self.clockNow = clockNow
-        let savedSkill = UserDefaults.standard.object(forKey: adaptiveSkillKey) as? Int
+        self.defaults = defaults
+        self.randomBlack = randomBlack
+        let savedSkill = defaults.object(forKey: adaptiveSkillKey) as? Int
         adaptiveSkill = min(100, max(0, savedSkill ?? 50))
+        stoneSelection = StoneSelection(rawValue: defaults.string(forKey: stoneSelectionKey) ?? "") ?? .black
+        nextAdaptiveStone = defaults.integer(forKey: nextAdaptiveStoneKey) == Stone.white.rawValue ? .white : .black
         loadRecords()
     }
 
     var aiStone: Stone { playerStone.opponent }
+
+    var showsForbiddenMoves: Bool {
+        isGameActive && result == nil && playerStone == .black && currentTurn == .black
+    }
 
     func turnTitle(language: AppLanguage) -> String {
         guard result == nil else {
@@ -71,7 +92,22 @@ final class GameViewModel: ObservableObject {
     }
 
     func startGame() {
+        resignIfPlaying()
         invalidateAI()
+
+        switch stoneSelection {
+        case .black: playerStone = .black
+        case .white: playerStone = .white
+        case .random:
+            if difficulty == .adaptive {
+                playerStone = nextAdaptiveStone
+                // Consume one assignment per started game, including restarts.
+                nextAdaptiveStone = playerStone.opponent
+                defaults.set(nextAdaptiveStone.rawValue, forKey: nextAdaptiveStoneKey)
+            } else {
+                playerStone = randomBlack() ? .black : .white
+            }
+        }
 
         board = Array(
             repeating: Array(repeating: Stone.empty, count: RenjuRules.boardSize),
@@ -94,15 +130,24 @@ final class GameViewModel: ObservableObject {
 
         if aiStone == .black {
             requestAIMove()
+        } else {
+            refreshForbiddenMoves()
         }
     }
 
     func backToSetup() {
+        resignIfPlaying()
         stopClock()
         invalidateAI()
         isThinking = false
         selectedMove = nil
         isGameActive = false
+    }
+
+    private func resignIfPlaying() {
+        guard isGameActive, result == nil else { return }
+        // Record the actual player colour before a restart assigns the next one.
+        finish(playerStone == .black ? .blackResigned : .whiteResigned)
     }
 
     func selectMove(_ move: Move) {
@@ -116,6 +161,12 @@ final class GameViewModel: ObservableObject {
 
         guard board[move.row][move.column] == .empty else {
             notice = .occupied
+            return
+        }
+
+        if let reason = forbiddenMoves[move], showsForbiddenMoves {
+            selectedMove = nil
+            notice = .forbidden(reason)
             return
         }
 
@@ -196,7 +247,7 @@ final class GameViewModel: ObservableObject {
     func clearRecords() {
         records.removeAll()
         let key = recordsKey
-        recordsQueue.async { UserDefaults.standard.removeObject(forKey: key) }
+        recordsQueue.async { [defaults] in defaults.removeObject(forKey: key) }
     }
 
     private func applyLegalMove(_ move: Move, stone: Stone) {
@@ -212,6 +263,7 @@ final class GameViewModel: ObservableObject {
             return
         }
         publishClock()
+        invalidateForbiddenMoves()
         board[move.row][move.column] = stone
         moves.append(RecordedMove(stone: stone, move: move))
         lastMove = move
@@ -231,7 +283,42 @@ final class GameViewModel: ObservableObject {
 
         if currentTurn == aiStone {
             requestAIMove()
+        } else {
+            refreshForbiddenMoves()
         }
+    }
+
+    /// One background scan per Black turn, never from rendering or clock ticks.
+    func refreshForbiddenMoves() {
+        invalidateForbiddenMoves()
+        guard showsForbiddenMoves else { return }
+        let snapshot = board
+        let requestID = UUID()
+        forbiddenRequestID = requestID
+        forbiddenTask = Task.detached(priority: .utility) { [weak self] in
+            let markers = RenjuRules.forbiddenMoves(board: snapshot, isCancelled: { Task.isCancelled })
+            guard !Task.isCancelled else { return }
+            await self?.completeForbiddenScan(requestID, snapshot: snapshot, markers: markers)
+        }
+    }
+
+    private func completeForbiddenScan(_ requestID: UUID, snapshot: [[Stone]],
+                                       markers: [Move: ForbiddenReason]) {
+        guard forbiddenRequestID == requestID, showsForbiddenMoves, board == snapshot else { return }
+        forbiddenRequestID = nil
+        forbiddenTask = nil
+        forbiddenMoves = markers
+        if !isValidatingMove, let selectedMove, let reason = markers[selectedMove] {
+            self.selectedMove = nil
+            notice = .forbidden(reason)
+        }
+    }
+
+    private func invalidateForbiddenMoves() {
+        forbiddenRequestID = nil
+        forbiddenTask?.cancel()
+        forbiddenTask = nil
+        forbiddenMoves = [:]
     }
 
     private func requestAIMove() {
@@ -273,6 +360,7 @@ final class GameViewModel: ObservableObject {
     }
 
     private func invalidateAI() {
+        invalidateForbiddenMoves()
         aiRequestID = nil
         aiTask?.cancel()
         aiTask = nil
@@ -378,11 +466,11 @@ final class GameViewModel: ObservableObject {
 
         adaptiveSkill = min(100, max(0, adaptiveSkill + delta))
         lastAdaptiveAdjustment = delta
-        UserDefaults.standard.set(adaptiveSkill, forKey: adaptiveSkillKey)
+        defaults.set(adaptiveSkill, forKey: adaptiveSkillKey)
     }
 
     private func loadRecords() {
-        guard let data = UserDefaults.standard.data(forKey: recordsKey) else {
+        guard let data = defaults.data(forKey: recordsKey) else {
             records = []
             return
         }
@@ -400,12 +488,12 @@ final class GameViewModel: ObservableObject {
         let snapshot = records
         let key = recordsKey
         // Preserve save/clear ordering without encoding up to 200 games on UI.
-        recordsQueue.async {
+        recordsQueue.async { [defaults] in
             do {
                 let encoder = JSONEncoder()
                 encoder.dateEncodingStrategy = .iso8601
                 let data = try encoder.encode(snapshot)
-                UserDefaults.standard.set(data, forKey: key)
+                defaults.set(data, forKey: key)
             } catch {
                 // A failed history write must never interrupt a live game.
             }

@@ -7,6 +7,7 @@ struct BoardView: View {
     let previewStone: Stone
     let enabled: Bool
     var language: AppLanguage = .korean
+    var forbiddenMoves: [Move: ForbiddenReason] = [:]
     let onSelect: (Move) -> Void
     @Environment(\.colorScheme) private var scheme
 
@@ -79,6 +80,19 @@ struct BoardView: View {
                                                      width: diameter, height: diameter))
                     context.stroke(ring, with: .color(theme.boardAccent), lineWidth: max(2, spacing * 0.06))
                 }
+
+                for (move, reason) in forbiddenMoves where board[move.row][move.column] == .empty {
+                    let center = CGPoint(x: margin + Double(move.column) * spacing,
+                                         y: margin + Double(move.row) * spacing)
+                    let diameter = spacing * 0.86
+                    let ring = Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
+                                                     width: diameter, height: diameter))
+                    context.fill(ring, with: .color(theme.surface))
+                    context.stroke(ring, with: .color(theme.danger), lineWidth: max(1.2, spacing * 0.045))
+                    context.draw(Text(reason.marker)
+                        .font(.system(size: max(8, spacing * 0.38), weight: .heavy, design: .rounded))
+                        .foregroundColor(theme.danger), at: center)
+                }
             }
             .contentShape(Rectangle())
             .gesture(
@@ -112,6 +126,9 @@ struct BoardView: View {
                                       y: margin + Double(row) * spacing)
                             .disabled(!enabled || board[row][column] != .empty)
                             .accessibilityAddTraits(selectedMove == move ? .isSelected : [])
+                            .accessibilityValue(forbiddenMoves[move].map {
+                                L10n.notice(.forbidden($0), language: language)
+                            } ?? "")
                             .accessibilityIdentifier("intersection.\(move.coordinate)")
                         }
                     }

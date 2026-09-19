@@ -34,6 +34,13 @@ enum AIDifficulty: String, CaseIterable, Identifiable, Codable, Sendable {
     var id: String { rawValue }
 }
 
+/// Setup preference; a live game always uses a concrete Black or White stone.
+enum StoneSelection: String, Codable, Sendable {
+    case black
+    case white
+    case random
+}
+
 enum AppLanguage: String, CaseIterable, Identifiable, Codable {
     case korean = "ko"
     case english = "en"
@@ -101,6 +108,14 @@ enum ForbiddenReason: String, Codable, Sendable {
     case overline
     case doubleFour
     case doubleThree
+
+    var marker: String {
+        switch self {
+        case .doubleThree: return "33"
+        case .doubleFour: return "44"
+        case .overline: return "6+"
+        }
+    }
 }
 
 enum GameResult: String, Codable, Equatable, Sendable {
@@ -108,14 +123,16 @@ enum GameResult: String, Codable, Equatable, Sendable {
     case whiteWin
     case blackTimeout
     case whiteTimeout
+    case blackResigned
+    case whiteResigned
     case draw
 
     func playerWon(playerStone: Stone) -> Bool {
         switch self {
         case .blackWin: return playerStone == .black
         case .whiteWin: return playerStone == .white
-        case .blackTimeout: return playerStone == .white
-        case .whiteTimeout: return playerStone == .black
+        case .blackTimeout, .blackResigned: return playerStone == .white
+        case .whiteTimeout, .whiteResigned: return playerStone == .black
         case .draw: return false
         }
     }

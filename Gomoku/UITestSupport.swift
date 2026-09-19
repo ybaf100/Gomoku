@@ -3,12 +3,25 @@ import Foundation
 
 /// Simulator-only fixtures; absent from the Release IPA.
 enum UITestSupport {
+    @MainActor
+    static func prepareGameIfRequested(_ game: GameViewModel) {
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains("-ui-testing"), args.contains("-ui-testing-forbidden"), !game.isGameActive else { return }
+        game.timeControl = .unlimited
+        game.stoneSelection = .black
+        game.startGame()
+        for (row, column) in [(7, 6), (7, 8), (6, 7), (8, 7)] { game.board[row][column] = .black }
+        for (row, column) in [(4, 4), (4, 5), (10, 9), (10, 10)] { game.board[row][column] = .white }
+        game.refreshForbiddenMoves()
+    }
+
     static func prepareIfRequested() {
         let args = ProcessInfo.processInfo.arguments
         guard args.contains("-ui-testing") else { return }
         let defaults = UserDefaults.standard
         if args.contains("-ui-testing-reset") {
-            for key in ["gomoku.language", "gomoku.appearance", "gomoku.gameRecords", "gomoku.adaptiveSkill"] {
+            for key in ["gomoku.language", "gomoku.appearance", "gomoku.gameRecords", "gomoku.adaptiveSkill",
+                        "gomoku.stoneSelection", "gomoku.nextAdaptiveStone"] {
                 defaults.removeObject(forKey: key)
             }
         }

@@ -101,6 +101,157 @@ struct EngineChecks {
         require(restored.clockConfiguration == fast, "new records preserve the actual clock rule")
     }
 
+    static func forbiddenMarkerChecks() {
+        let center = Move(row: 7, column: 7)
+        let fixtures: [([[Stone]], ForbiddenReason)] = [
+            (board([(7,6),(7,8),(6,7),(8,7)]), .doubleThree),
+            (board([(7,4),(7,5),(7,6),(4,7),(5,7),(6,7)]), .doubleFour),
+            (board([(7,3),(7,4),(7,5),(7,6),(7,8)]), .overline)
+        ]
+        for (position, reason) in fixtures {
+            let markers = RenjuRules.forbiddenMoves(board: position)
+            require(markers[center] == reason, "board scan exposes \(reason.marker) at the forbidden intersection")
+            require(markers.keys.allSatisfy { position[$0.row][$0.column] == .empty }, "markers never cover occupied intersections")
+        }
+        let five = board([(7,3),(7,4),(7,5),(7,6),(6,7),(8,7)])
+        require(RenjuRules.forbiddenMoves(board: five)[center] == nil, "exact-five winning point has no forbidden marker")
+        require(RenjuRules.forbiddenMoves(board: fixtures[0].0, isCancelled: { true }).isEmpty,
+                "cancelled marker scan returns no partial stale map")
+    }
+
+    @MainActor
+    static func playerOptionsChecks() async {
+        let defaults = UserDefaults(suiteName: "gomoku.player-options.\(UUID())")!
+        var drawBlack = true
+        var draws = 0
+        let game = GameViewModel(defaults: defaults, randomBlack: { draws += 1; return drawBlack })
+        game.timeControl = .unlimited
+        game.stoneSelection = .random
+        game.startGame()
+        require(game.playerStone == .black && draws == 1, "random draw can assign Black")
+        game.startGame()
+        require(game.playerStone == .black && draws == 2, "ordinary random draws are independent, not forced alternation")
+        drawBlack = false
+        game.startGame()
+        require(game.playerStone == .white && draws == 3 && game.isThinking, "White assignment starts the Black AI")
+        for _ in 0..<200 where game.isThinking { try? await Task.sleep(nanoseconds: 10_000_000) }
+        require(game.board[7][7] == .black && game.currentTurn == .white, "AI opening hands control to the assigned White player")
+        game.stoneSelection = .black
+        require(game.playerStone == .white, "setup preference cannot change the current game's colour")
+        game.backToSetup()
+        require(game.records.first?.playerStone == .white && game.records.first?.result == .whiteResigned,
+                "resignation records the actual random colour")
+        game.startGame()
+        require(game.playerStone == .black && draws == 3, "fixed Black bypasses random draws")
+        game.backToSetup()
+        game.stoneSelection = .white
+        game.startGame()
+        require(game.playerStone == .white && draws == 3, "fixed White remains available")
+        game.backToSetup()
+
+        game.stoneSelection = .random
+        game.difficulty = .adaptive
+        game.startGame()
+        require(game.playerStone == .black && game.nextAdaptiveStone == .white && draws == 3,
+                "first Adaptive random game starts Black without drawing")
+        game.selectMove(Move(row: 7, column: 7))
+        game.cancelSelection()
+        require(game.nextAdaptiveStone == .white, "preview and cancellation do not consume another colour")
+        game.backToSetup()
+        let restored = GameViewModel(defaults: defaults, randomBlack: { true })
+        restored.timeControl = .unlimited
+        require(restored.stoneSelection == .random && restored.nextAdaptiveStone == .white,
+                "choice and next Adaptive colour survive view-model recreation")
+        restored.difficulty = .adaptive
+        restored.startGame()
+        require(restored.playerStone == .white && restored.nextAdaptiveStone == .black, "second Adaptive game is White")
+        restored.startGame()
+        require(restored.playerStone == .black && restored.nextAdaptiveStone == .white, "Adaptive restart alternates back to Black")
+        restored.backToSetup()
+        restored.stoneSelection = .white
+        restored.startGame()
+        restored.backToSetup()
+        restored.stoneSelection = .random
+        restored.difficulty = .normal
+        restored.startGame()
+        restored.backToSetup()
+        require(restored.nextAdaptiveStone == .white, "fixed colours and ordinary random games preserve the Adaptive sequence")
+    }
+
+    @MainActor
+    static func markerLifecycleChecks() async {
+        let game = GameViewModel(defaults: UserDefaults(suiteName: "gomoku.markers.\(UUID())")!)
+        let center = Move(row: 7, column: 7)
+        game.timeControl = .unlimited
+        game.startGame()
+        game.board = board([(7,6),(7,8),(6,7),(8,7)])
+        let start = ProcessInfo.processInfo.systemUptime
+        game.refreshForbiddenMoves()
+        require(ProcessInfo.processInfo.systemUptime - start < 0.02, "requesting markers never scans on the main actor")
+        for _ in 0..<200 where game.forbiddenMoves.isEmpty { try? await Task.sleep(nanoseconds: 10_000_000) }
+        require(game.showsForbiddenMoves && game.forbiddenMoves[center] == .doubleThree, "Black player sees forbidden markers on their turn")
+        game.selectMove(center)
+        require(game.selectedMove == nil && game.notice == .forbidden(.doubleThree), "tapping a marker explains the restriction without selecting it")
+        game.selectMove(Move(row: 0, column: 0))
+        game.confirmSelectedMove()
+        for _ in 0..<200 where game.isValidatingMove { try? await Task.sleep(nanoseconds: 10_000_000) }
+        require(!game.showsForbiddenMoves && game.forbiddenMoves.isEmpty, "markers clear as soon as the turn passes to White")
+        game.backToSetup()
+        game.startGame()
+        game.board = board([(7,6),(7,8),(6,7),(8,7)])
+        game.refreshForbiddenMoves()
+        game.backToSetup()
+        game.stoneSelection = .white
+        game.startGame()
+        game.refreshForbiddenMoves()
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        require(!game.showsForbiddenMoves && game.forbiddenMoves.isEmpty,
+                "White player never sees markers, including stale Black scans after restart")
+        game.backToSetup()
+    }
+
+    @MainActor
+    static func resignationChecks() async {
+        let game = GameViewModel(defaults: UserDefaults(suiteName: "gomoku.resign.\(UUID())")!)
+        game.timeControl = .unlimited
+        game.difficulty = .adaptive
+        game.startGame()
+        game.selectMove(Move(row: 7, column: 7))
+        game.confirmSelectedMove()
+        game.backToSetup()
+        require(game.result == .blackResigned && game.records.count == 1, "leaving during validation records one resignation")
+        require(game.adaptiveSkill == 42 && game.lastAdaptiveAdjustment == -8, "Adaptive resignation updates skill as a loss")
+        game.backToSetup()
+        require(game.records.count == 1 && game.adaptiveSkill == 42, "repeated exit cannot record or adjust twice")
+        game.stoneSelection = .white
+        game.startGame()
+        game.backToSetup()
+        require(game.records.first?.result == .whiteResigned && !game.records[0].result.playerWon(playerStone: .white),
+                "leaving during the Black AI turn is still the White player's loss")
+        let data = try! JSONEncoder().encode(game.records)
+        let decoded = try! JSONDecoder().decode([GameRecord].self, from: data)
+        require(decoded[0].result == .whiteResigned, "resignation records round-trip through saved history")
+        let count = game.records.count
+        game.stoneSelection = .black
+        game.startGame()
+        game.startGame()
+        require(game.records.count == count + 1 && game.records.first?.result == .blackResigned,
+                "restarting an unfinished game records the old game's resignation exactly once")
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        require(game.board.joined().allSatisfy { $0 == .empty } && game.result == nil,
+                "cancelled validation and AI cannot change the next game")
+        game.board = board([(7,3),(7,4),(7,5),(7,6)])
+        game.selectMove(Move(row: 7, column: 7))
+        game.confirmSelectedMove()
+        for _ in 0..<200 where game.result == nil { try? await Task.sleep(nanoseconds: 10_000_000) }
+        require(game.result == .blackWin, "normal victory still completes normally")
+        let completedCount = game.records.count
+        let completedSkill = game.adaptiveSkill
+        game.backToSetup()
+        require(game.records.count == completedCount && game.adaptiveSkill == completedSkill && game.result == .blackWin,
+                "leaving a completed game never converts its result to resignation")
+    }
+
     @MainActor
     static func incrementValidationChecks() async {
         var now: TimeInterval = 0
@@ -166,8 +317,12 @@ struct EngineChecks {
     static func main() async {
         engineChecks()
         clockChecks()
+        forbiddenMarkerChecks()
         await viewModelChecks()
         await incrementValidationChecks()
+        await playerOptionsChecks()
+        await markerLifecycleChecks()
+        await resignationChecks()
         print("All engine, rules, deadline and confirmation checks passed.")
     }
 }
