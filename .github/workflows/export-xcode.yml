@@ -1,0 +1,41 @@
+name: Export Xcode handoff
+on:
+  push:
+    branches: [codex/xcode-handoff]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: macos-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate icon and Xcode project
+        run: |
+          brew install xcodegen
+          swift scripts/make-handoff-icon.swift
+          xcodegen generate
+          xcodebuild -version
+      - name: Verify unsigned Release archive
+        run: |
+          xcodebuild archive -project Gomoku.xcodeproj -scheme Gomoku \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath build/Gomoku.xcarchive -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+          test -f build/Gomoku.xcarchive/Products/Applications/Gomoku.app/PrivacyInfo.xcprivacy
+          test -f build/Gomoku.xcarchive/Products/Applications/Gomoku.app/Assets.car
+          plutil -lint Gomoku/PrivacyInfo.xcprivacy
+      - name: Package editable project
+        run: |
+          mkdir -p handoff/Gomoku-Xcode
+          cp -R Gomoku GomokuUITests Tests scripts Gomoku.xcodeproj project.yml README.md TESTFLIGHT-README.md handoff/Gomoku-Xcode/
+          git rev-parse HEAD > handoff/Gomoku-Xcode/HANDOFF-COMMIT.txt
+          xcodebuild -version > handoff/Gomoku-Xcode/BUILD-ENVIRONMENT.txt
+          cd handoff
+          zip -qry Gomoku-Xcode.zip Gomoku-Xcode -x '*/xcuserdata/*' '*/.DS_Store'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gomoku-Xcode-Handoff
+          path: handoff/Gomoku-Xcode.zip
+          retention-days: 14
+          if-no-files-found: error
