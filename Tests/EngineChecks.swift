@@ -175,7 +175,7 @@ struct EngineChecks {
         restored.difficulty = .normal
         restored.startGame()
         restored.backToSetup()
-        require(restored.nextAdaptiveStone == .white, "fixed colours and ordinary random games preserve the Adaptive sequence")
+        require(restored.nextAdaptiveStone == .black, "Adaptive always alternates even when the saved preference is fixed; ordinary games preserve the sequence")
     }
 
     @MainActor
@@ -232,6 +232,7 @@ struct EngineChecks {
         let decoded = try! JSONDecoder().decode([GameRecord].self, from: data)
         require(decoded[0].result == .whiteResigned, "resignation records round-trip through saved history")
         let count = game.records.count
+        game.difficulty = .normal
         game.stoneSelection = .black
         game.startGame()
         game.startGame()
@@ -316,6 +317,8 @@ struct EngineChecks {
 
     static func main() async {
         engineChecks()
+        progressionChecks()
+        await progressionIntegrationChecks()
         clockChecks()
         forbiddenMarkerChecks()
         await viewModelChecks()

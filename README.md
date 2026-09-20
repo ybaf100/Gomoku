@@ -9,7 +9,7 @@ Offline iOS/iPadOS Gomoku app for human-vs-AI play.
 - Player can choose Black, White or Random
 - Random draws either colour for each Easy/Normal/Hard game; Adaptive + Random alternates Black, White, Black, starting with Black
 - The stone preference and next Adaptive colour are saved on the device; fixed-colour games do not advance the sequence
-- Easy / Normal / Hard / Adaptive AI (starts at 50/100)
+- Easy / Normal / Hard / Very hard / Adaptive AI (starts at 50/100)
 - Fast reserve: start 30 seconds, +5 seconds per completed move, capped at 45 seconds
 - Slow reserve: start 60 seconds, +10 seconds per completed move, capped at 90 seconds
 - Unlimited clock
@@ -82,7 +82,7 @@ Demo records used by the UI tests are compiled only in Debug and require explici
 
 ## AI and move responsiveness
 
-The local engine checks immediate wins and blocks across the entire board, scores both contiguous and broken shapes, and uses iterative alpha-beta search for Normal, Hard and Adaptive levels. The search targets a 2.2-second budget and keeps the best fully completed iteration. Hard and higher Adaptive levels search deeper when the budget allows. This is a local heuristic engine, not Rapfi or a trained neural network.
+The local engine checks immediate wins and blocks across the entire board, scores both contiguous and broken shapes, and uses iterative alpha-beta search for Normal, Hard and Adaptive levels. The search targets a maximum 7.5-second budget and keeps the best fully completed iteration. Hard and higher Adaptive levels search deeper when the budget allows. This is a local heuristic engine, not Rapfi or a trained neural network.
 
 Confirming a move performs forbidden-pattern validation off the main actor. While the check runs, selection is locked and a checking status is shown. Returning to setup, restarting, or finishing cancels outstanding validation/search; request identifiers reject stale results. Forbidden-pattern evaluation examines only windows containing the relevant stone and recurses only on actual straight-four continuations. History encoding/writes also run off the main actor in order.
 
@@ -95,3 +95,16 @@ An external engine option is [Rapfi](https://github.com/dhbloo/rapfi), a GPLv3 C
 Both players start with their own reserve. Only the current player loses time. A legal completed move adds the preset increment to that player's reserve, up to its ceiling; the opponent then starts spending their own time. Previewing, cancelling, duplicate input, and forbidden moves never earn time. Reaching zero loses immediately and cannot be rescued by a late confirmation. Unlimited mode remains available. Saved games include their clock configuration; old fixed-total records retain their original 3/10-minute description.
 
 The wide placement button below the board doubles as the active player's time gauge (remaining / ceiling), with quarter marks, numeric time and a low-time colour. On compact windows the button stays pinned at the bottom. Both player cards also show reserve gauges. The green/mint palette follows Light, Dark and System appearance, and the gauge updates without continuous animation.
+
+
+## Achievements, final boss and results
+
+- Very hard is a red final-boss card. Permanently unlock it by **either** reaching Adaptive 80 **or** winning twice on Hard (not necessarily consecutively). Claiming AP is not required. Falling below 80 or deleting replay history never relocks it.
+- Adaptive always alternates Black/White, starting Black for a new profile. Very hard always draws a random colour each game. Ordinary modes retain the saved colour preference.
+- Ten achievements: six progressive I–V tracks and four one-time achievements with Common/Rare/Epic/Legendary rarity. Progressive rewards: 5/10/20/40/75 AP. One-time rewards: 10/30/50/100 AP. AP requires an explicit claim; titles require only unlocking. Older unlocked title stages remain selectable.
+- Home shows an animated flame with the current win streak, hidden at zero. Loss, draw and resignation reset the current streak, not its historical best. Reduce Motion disables the flame animation.
+- Results open a full-screen numbered replay at the final position. First/previous/play-pause/next/last and a slider support review. Winning lines and the last move are highlighted. Play again preserves difficulty/time settings and uses the next Adaptive score/colour or a fresh boss colour draw. Exit returns home.
+- Results, adaptive score and achievement counters are stored as one versioned local archive (`gomoku.archive.v1`). Per-game IDs prevent duplicate accounting; reward rows retain their original AP amounts and claim dates. The latest 200 replays are separate from lifetime metrics. Legacy retained history/current skill are backfilled once; unavailable deleted history and unknown past peaks cannot be reconstructed. This is device-local storage, without cloud sync.
+- Very hard searches up to depth 10, uses a wider candidate set, bounded continuous-four proof search, legal threat evaluation and per-search position caches. All modes stop at a 7.5-second search budget; obvious moves finish early. Short reserves reduce the budget and leave time for committing the move. OS scheduling can add small overhead, so physical-device latency/thermal validation remains necessary.
+
+The engine and progression CI covers OR unlocks, score regression, repeat claims, legacy migration, history deletion, streak reset, forced colours and rematches. Simulator checks cover the red boss card, achievement claim and numbered result replay in addition to existing appearance/confirmation checks.

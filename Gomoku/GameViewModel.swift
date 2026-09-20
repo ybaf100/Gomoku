@@ -29,12 +29,17 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var records: [GameRecord] = []
     @Published private(set) var adaptiveSkill: Int
     @Published private(set) var lastAdaptiveAdjustment: Int?
+    @Published private(set) var achievements = AchievementProgress()
+    @Published private(set) var newAchievements: [AchievementReward] = []
+    @Published private(set) var completedRecord: GameRecord?
+    @Published private(set) var bossJustUnlocked = false
     @Published var isGameActive = false
 
     private let adaptiveSkillKey = "gomoku.adaptiveSkill"
     private let recordsKey = "gomoku.gameRecords"
     private let stoneSelectionKey = "gomoku.stoneSelection"
     private let nextAdaptiveStoneKey = "gomoku.nextAdaptiveStone"
+    private let archiveKey = "gomoku.archive.v1"
     private let defaults: UserDefaults
     private let randomBlack: () -> Bool
 
@@ -43,13 +48,15 @@ final class GameViewModel: ObservableObject {
     private var matchClock: MatchClock?
     private var moves: [RecordedMove] = []
     private var adaptiveSkillAtStart: Int?
+    private var matchID = UUID()
+    private var matchDifficulty: AIDifficulty = .normal
+    private var matchTimeControl: TimeControl = .fast
     private var aiRequestID: UUID?
     private var aiTask: Task<Void, Never>?
     private var validationTask: Task<Void, Never>?
     private var validationID: UUID?
     private var forbiddenTask: Task<Void, Never>?
     private var forbiddenRequestID: UUID?
-    private let recordsQueue = DispatchQueue(label: "gomoku.records", qos: .utility)
 
     init(clockNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
          defaults: UserDefaults = .standard,
@@ -92,10 +99,14 @@ final class GameViewModel: ObservableObject {
     }
 
     func startGame() {
+        guard difficulty != .veryHard || achievements.bossUnlocked else { return }
         resignIfPlaying()
         invalidateAI()
+        matchID = UUID()
+        matchDifficulty = difficulty
+        matchTimeControl = timeControl
 
-        switch stoneSelection {
+        switch difficulty.automaticColour ? StoneSelection.random : stoneSelection {
         case .black: playerStone = .black
         case .white: playerStone = .white
         case .random:
@@ -121,6 +132,9 @@ final class GameViewModel: ObservableObject {
         isThinking = false
         moves = []
         lastAdaptiveAdjustment = nil
+        newAchievements = []
+        bossJustUnlocked = false
+        completedRecord = nil
         adaptiveSkillAtStart = difficulty == .adaptive ? adaptiveSkill : nil
         matchClock = MatchClock(configuration: timeControl.clockConfiguration, now: clockNow())
         publishClock()
@@ -246,8 +260,23 @@ final class GameViewModel: ObservableObject {
 
     func clearRecords() {
         records.removeAll()
-        let key = recordsKey
-        recordsQueue.async { [defaults] in defaults.removeObject(forKey: key) }
+        saveRecords()
+    }
+
+    func claimAchievement(_ id: String) {
+        achievements.claim(id)
+        saveRecords()
+    }
+
+    func equipTitle(_ id: String?) {
+        achievements.equip(id)
+        saveRecords()
+    }
+
+    func playAgain() {
+        difficulty = matchDifficulty
+        timeControl = matchTimeControl
+        startGame()
     }
 
     private func applyLegalMove(_ move: Move, stone: Stone) {
@@ -333,15 +362,19 @@ final class GameViewModel: ObservableObject {
         isThinking = true
         let snapshot = board
         let stone = aiStone
-        let level = difficulty
-        let skill = difficulty == .adaptive ? adaptiveSkill : 50
+        let level = matchDifficulty
+        let skill = matchDifficulty == .adaptive ? adaptiveSkill : 50
+        var clock = matchClock
+        _ = clock?.settle(at: clockNow())
+        let remaining = stone == .black ? clock?.black : clock?.white
+        let budget = GomokuAI.thinkingBudget(remaining: remaining, increment: clock?.configuration?.increment)
 
         // Cancellation stops abandoned searches; a serial deadline-based search
         // returns its best completed iteration instead of an arbitrary timeout fallback.
         aiTask?.cancel()
         aiTask = Task.detached(priority: .userInitiated) { [weak self] in
             let engine = GomokuAI(difficulty: level, adaptiveSkill: skill)
-            let move = engine.chooseMove(board: snapshot, stone: stone, timeLimit: 2.2)
+            let move = engine.chooseMove(board: snapshot, stone: stone, timeLimit: budget)
             guard !Task.isCancelled else { return }
             await self?.completeAIMove(requestID, move: move, stone: stone)
         }
@@ -422,10 +455,11 @@ final class GameViewModel: ObservableObject {
         stopClock()
 
         let record = GameRecord(
+            id: matchID,
             playerStone: playerStone,
-            difficulty: difficulty,
+            difficulty: matchDifficulty,
             adaptiveSkill: adaptiveSkillAtStart,
-            timeControl: timeControl,
+            timeControl: matchTimeControl,
             result: newResult,
             moves: moves,
             clockConfiguration: matchClock?.configuration
@@ -435,11 +469,14 @@ final class GameViewModel: ObservableObject {
         if records.count > 200 {
             records = Array(records.prefix(200))
         }
-        saveRecords()
-
-        if difficulty == .adaptive {
+        if matchDifficulty == .adaptive {
             adjustAdaptiveSkill(after: newResult)
         }
+        let wasUnlocked = achievements.bossUnlocked
+        newAchievements = achievements.record(record, resultingSkill: adaptiveSkill)
+        bossJustUnlocked = !wasUnlocked && achievements.bossUnlocked
+        completedRecord = record
+        saveRecords()
     }
 
     private func adjustAdaptiveSkill(after result: GameResult) {
@@ -466,12 +503,22 @@ final class GameViewModel: ObservableObject {
 
         adaptiveSkill = min(100, max(0, adaptiveSkill + delta))
         lastAdaptiveAdjustment = delta
-        defaults.set(adaptiveSkill, forKey: adaptiveSkillKey)
     }
 
     private func loadRecords() {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let data = defaults.data(forKey: archiveKey),
+           let archive = try? decoder.decode(GameArchive.self, from: data) {
+            records = archive.records
+            achievements = archive.achievements
+            adaptiveSkill = archive.adaptiveSkill
+            return
+        }
         guard let data = defaults.data(forKey: recordsKey) else {
             records = []
+            achievements.observeSkill(adaptiveSkill)
+            saveRecords()
             return
         }
 
@@ -482,21 +529,34 @@ final class GameViewModel: ObservableObject {
         } catch {
             records = []
         }
+        // Reconstruct only facts retained in legacy history. Never invent a historical peak.
+        for record in records.reversed() {
+            achievements.record(record, resultingSkill: record.adaptiveSkill ?? 0, at: record.playedAt)
+        }
+        achievements.observeSkill(adaptiveSkill)
+        saveRecords()
     }
 
     private func saveRecords() {
-        let snapshot = records
-        let key = recordsKey
-        // Preserve save/clear ordering without encoding up to 200 games on UI.
-        recordsQueue.async { [defaults] in
-            do {
-                let encoder = JSONEncoder()
-                encoder.dateEncodingStrategy = .iso8601
-                let data = try encoder.encode(snapshot)
-                defaults.set(data, forKey: key)
-            } catch {
-                // A failed history write must never interrupt a live game.
-            }
-        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let snapshot = GameArchive(records: records, achievements: achievements, adaptiveSkill: adaptiveSkill)
+        if let data = try? encoder.encode(snapshot) { defaults.set(data, forKey: archiveKey) }
     }
+
+    #if DEBUG
+    func finishUITestGame(_ record: GameRecord) {
+        guard ProcessInfo.processInfo.arguments.contains("-ui-testing") else { return }
+        difficulty = record.difficulty
+        stoneSelection = record.playerStone == .black ? .black : .white
+        timeControl = .unlimited
+        startGame()
+        invalidateAI()
+        playerStone = record.playerStone
+        moves = record.moves
+        for entry in moves { board[entry.move.row][entry.move.column] = entry.stone }
+        lastMove = moves.last?.move
+        finish(record.result)
+    }
+    #endif
 }

@@ -64,9 +64,9 @@ jobs:
       - name: Compile optimized engine and confirmation regressions
         run: |
           mkdir -p build
-          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift Gomoku/Localization.swift \
+          swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift Gomoku/Localization.swift Gomoku/Achievements.swift \
             Gomoku/RenjuRules.swift Gomoku/GomokuAI.swift Gomoku/GameViewModel.swift \
-            Tests/EngineChecks.swift -o build/engine-checks
+            Tests/EngineChecks.swift Tests/ProgressionChecks.swift -o build/engine-checks
       - name: Verify rules, tactics, deadline and UI responsiveness
         run: build/engine-checks
       - name: Measure the previous forbidden-check implementation
@@ -117,6 +117,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPAD_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPad.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow \
+            -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults \
             -only-testing:GomokuUITests/AppearanceTests/testPlayerOptionsAndForbiddenMarkers CODE_SIGNING_ALLOWED=NO
       - name: Verify system appearance
         if: matrix.device == 'iPad'
@@ -136,7 +137,8 @@ jobs:
           xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
             -destination "platform=iOS Simulator,id=$IPHONE_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPhone.xcresult \
-            -only-testing:GomokuUITests/AppearanceTests/testCompactLayout CODE_SIGNING_ALLOWED=NO
+            -only-testing:GomokuUITests/AppearanceTests/testCompactLayout \
+            -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults CODE_SIGNING_ALLOWED=NO
       - name: Export simulator screenshots
         if: always()
         run: |

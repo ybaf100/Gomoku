@@ -170,7 +170,9 @@ struct ReplayView: View {
 
     private var board: some View {
         BoardView(board: replayBoard, lastMove: replayLastMove, selectedMove: nil,
-                  previewStone: .black, enabled: false, language: language) { _ in }
+                  previewStone: .black, enabled: false, language: language,
+                  moveNumbers: ReplayPosition(record: record, ply: ply).numbers,
+                  winningLine: ReplayPosition(record: record, ply: ply).winningLine) { _ in }
     }
 
     private var replayControls: some View {
