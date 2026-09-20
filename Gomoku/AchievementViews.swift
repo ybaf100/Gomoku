@@ -32,6 +32,8 @@ struct StreakBadge: View {
                     .foregroundStyle(LinearGradient(colors: [.yellow, .orange, .red], startPoint: .top, endPoint: .bottom))
                     .scaleEffect(burning && !reduceMotion ? 1.07 : 1)
                     .shadow(color: .orange.opacity(burning ? 0.45 : 0.15), radius: 8)
+                    // Keep the repeating transaction on the flame, not the setup layout.
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: burning)
                 Text("\(count)").font(.system(.headline, design: .rounded, weight: .black))
                     .foregroundStyle(Color(hex: 0x411006)).offset(y: 6)
             }
@@ -42,7 +44,7 @@ struct StreakBadge: View {
         .accessibilityIdentifier("winStreak")
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { burning = true }
+            burning = true
         }
     }
 }
@@ -77,6 +79,7 @@ struct BossDifficultyCard: View {
                     }
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .padding(18).foregroundStyle(.white)
             .background(LinearGradient(colors: [Color(hex: 0x491326), Color(hex: selected ? 0xA61E32 : 0x751C2A), Color(hex: 0x260D17)], startPoint: .topLeading, endPoint: .bottomTrailing))
             .clipShape(RoundedRectangle(cornerRadius: 18))

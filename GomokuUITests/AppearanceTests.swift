@@ -33,6 +33,17 @@ final class AppearanceTests: XCTestCase {
         waitForExpectations(timeout: 20)
     }
 
+    private func expectBossLayout() {
+        let boss = app.buttons["difficulty.veryHard"]
+        // Capture after the selection's layout commit, not the pointer-up frame.
+        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: boss)
+        waitForExpectations(timeout: 5)
+        let time = app.buttons["time.fast"]
+        XCTAssertLessThanOrEqual(boss.frame.maxY, time.frame.minY, "Boss and time controls must not overlap")
+        XCTAssertFalse(app.buttons["stone.1"].exists)
+        XCTAssertFalse(app.buttons["stone.2"].exists)
+    }
+
     func testThemePersistenceAndGameFlow() {
         tap("openSettings")
         tap("appearance.light")
@@ -140,8 +151,10 @@ final class AppearanceTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.descendants(matching: .any)["winStreak"].firstMatch.waitForExistence(timeout: 10))
         tap("difficulty.veryHard")
+        expectBossLayout()
         screenshot("22-boss-unlocked-light")
         tap("openSettings"); tap("appearance.dark"); tap("closeSettings")
+        expectBossLayout()
         screenshot("23-boss-unlocked-dark")
         tap("openAchievements")
         let before = app.staticTexts["totalAP"].label

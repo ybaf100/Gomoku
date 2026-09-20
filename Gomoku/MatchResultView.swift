@@ -137,10 +137,18 @@ struct MatchResultView: View {
         VStack(spacing: 7) {
             Text(record.result == .draw ? L10n.choose("무승부", "DRAW", language) : record.result.playerWon(playerStone: record.playerStone) ? L10n.choose("승리", "VICTORY", language) : L10n.choose("패배", "DEFEAT", language))
                 .font(.system(.largeTitle, design: .serif, weight: .bold)).accessibilityIdentifier("matchResultTitle")
-            Text(L10n.result(record.result, playerStone: record.playerStone, language: language))
+            Text(resultReason)
                 .font(.subheadline).foregroundStyle(theme.secondary)
             Text(L10n.difficulty(record.difficulty, language: language, adaptiveSkill: record.adaptiveSkill))
                 .font(.caption).foregroundStyle(theme.accent)
+        }
+    }
+    private var resultReason: String {
+        switch record.result {
+        case .blackWin, .whiteWin: return L10n.choose("오목 완성", "Five in a row", language)
+        case .blackTimeout, .whiteTimeout: return L10n.choose("시간 초과", "Time expired", language)
+        case .blackResigned, .whiteResigned: return L10n.choose("기권으로 종료", "Ended by resignation", language)
+        case .draw: return L10n.choose("승부 없이 대국 종료", "The game ended level", language)
         }
     }
     private var details: some View {
