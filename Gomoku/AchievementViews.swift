@@ -99,10 +99,12 @@ struct BossDifficultyCard: View {
 struct AchievementsView: View {
     @ObservedObject var game: GameViewModel
     let language: AppLanguage
+    var focusUnlocks = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
     private var theme: GomokuTheme { GomokuTheme(scheme) }
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 SurfaceCard {
@@ -126,6 +128,8 @@ struct AchievementsView: View {
                 ForEach(AchievementDefinition.all.filter { !$0.progressive }) { card($0) }
             }
             .padding(20).frame(maxWidth: 720).frame(maxWidth: .infinity)
+        }
+        .onAppear { if focusUnlocks { proxy.scrollTo("adaptive80", anchor: .top) } }
         }
         .background { GameBackdrop() }.foregroundStyle(theme.ink).tint(theme.accent)
         .navigationTitle(L10n.choose("도전과제", "Achievements", language))

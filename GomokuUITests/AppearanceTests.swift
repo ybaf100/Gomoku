@@ -132,8 +132,8 @@ final class AppearanceTests: XCTestCase {
         tap("closeAchievements")
         tap("difficulty.adaptive")
         XCTAssertTrue(app.staticTexts["automaticColour"].exists || app.otherElements["automaticColour"].exists)
-        XCTAssertFalse(app.buttons["stone.black"].exists)
-        XCTAssertFalse(app.buttons["stone.white"].exists)
+        XCTAssertFalse(app.buttons["stone.1"].exists)
+        XCTAssertFalse(app.buttons["stone.2"].exists)
 
         app.terminate()
         app.launchArguments = ["-ui-testing", "-ui-testing-reset", "-ui-testing-boss"]
@@ -172,6 +172,17 @@ final class AppearanceTests: XCTestCase {
         tap("backHome"); tap("confirmLeaveGame")
         XCTAssertFalse(app.descendants(matching: .any)["winStreak"].firstMatch.exists)
         XCTAssertTrue(app.buttons["difficulty.veryHard"].isSelected)
+        tap("openSettings"); tap("appearance.light"); tap("closeSettings")
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-result", "-ui-testing-defeat"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["matchResultTitle"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.staticTexts["matchResultTitle"].label, "패배")
+        XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "10 / 10")
+        screenshot("26-defeat-numbered-replay-light")
+        tap("resultExit")
+        XCTAssertTrue(app.buttons["difficulty.veryHard"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["matchResultTitle"].exists)
     }
 
     func testPlayerOptionsAndForbiddenMarkers() {

@@ -6,8 +6,8 @@ enum UITestSupport {
     @MainActor
     static func prepareGameIfRequested(_ game: GameViewModel) {
         let args = ProcessInfo.processInfo.arguments
-        if args.contains("-ui-testing"), args.contains("-ui-testing-result"), !game.isGameActive {
-            game.finishUITestGame(fixture(difficulty: .veryHard))
+        if args.contains("-ui-testing"), args.contains("-ui-testing-result"), !game.isGameActive, game.completedRecord == nil {
+            game.finishUITestGame(fixture(difficulty: .veryHard, defeat: args.contains("-ui-testing-defeat")))
             return
         }
         guard args.contains("-ui-testing"), args.contains("-ui-testing-forbidden"), !game.isGameActive else { return }
@@ -53,10 +53,11 @@ enum UITestSupport {
         }
     }
 
-    private static func fixture(difficulty: AIDifficulty) -> GameRecord {
-        let points = [(7,5),(6,5),(7,6),(6,6),(7,7),(8,6),(7,8),(8,7),(7,9)]
+    private static func fixture(difficulty: AIDifficulty, defeat: Bool = false) -> GameRecord {
+        let points = defeat ? [(0,0),(7,5),(6,5),(7,6),(6,6),(7,7),(8,6),(7,8),(8,7),(7,9)]
+                            : [(7,5),(6,5),(7,6),(6,6),(7,7),(8,6),(7,8),(8,7),(7,9)]
         return GameRecord(playerStone: .black, difficulty: difficulty, adaptiveSkill: nil,
-                          timeControl: .unlimited, result: .blackWin,
+                          timeControl: .unlimited, result: defeat ? .whiteWin : .blackWin,
                           moves: points.enumerated().map { RecordedMove(stone: $0.offset.isMultiple(of: 2) ? .black : .white, move: Move(row: $0.element.0, column: $0.element.1)) })
     }
 }

@@ -91,7 +91,9 @@ struct MatchResultView: View {
     let language: AppLanguage
     @Environment(\.colorScheme) private var scheme
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showAchievements = false
+    @State private var revealedRewards = 0
     private var theme: GomokuTheme { GomokuTheme(scheme) }
     var body: some View {
         GeometryReader { geometry in
@@ -122,6 +124,14 @@ struct MatchResultView: View {
         }
         .sheet(isPresented: $showAchievements) { NavigationStack { AchievementsView(game: game, language: language) } }
         .interactiveDismissDisabled()
+        .task(id: record.id) {
+            for index in game.newAchievements.indices {
+                guard !Task.isCancelled else { return }
+                if reduceMotion { revealedRewards = index + 1 }
+                else { withAnimation(.easeOut(duration: 0.25)) { revealedRewards = index + 1 } }
+                do { try await Task.sleep(for: .milliseconds(550)) } catch { return }
+            }
+        }
     }
     private var header: some View {
         VStack(spacing: 7) {
@@ -144,7 +154,7 @@ struct MatchResultView: View {
                 Label(L10n.choose("매우 어려움 영구 해제!", "Very hard permanently unlocked!", language), systemImage: "crown.fill")
                     .font(.headline).foregroundStyle(theme.danger).accessibilityIdentifier("bossUnlockedNotice")
             }
-            ForEach(game.newAchievements) { reward in
+            ForEach(Array(game.newAchievements.prefix(revealedRewards))) { reward in
                 if let definition = AchievementDefinition.all.first(where: { $0.id == reward.achievementID }) {
                     HStack(spacing: 10) {
                         Image(systemName: "trophy.fill").foregroundStyle(definition.progressive ? theme.accent : definition.rarity.color)

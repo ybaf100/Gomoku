@@ -5,10 +5,11 @@ Offline iOS/iPadOS Gomoku app for human-vs-AI play.
 ## Features
 
 - 15×15 board
+- User-selected photographic app icon, packaged as an opaque 1024px universal iOS asset
 - Human vs local AI
-- Player can choose Black, White or Random
-- Random draws either colour for each Easy/Normal/Hard game; Adaptive + Random alternates Black, White, Black, starting with Black
-- The stone preference and next Adaptive colour are saved on the device; fixed-colour games do not advance the sequence
+- Easy/Normal/Hard allow Black, White or Random
+- Adaptive always alternates Black/White, starting Black; Very hard always draws a random colour
+- Ordinary-mode stone preference and next Adaptive colour persist independently; non-Adaptive games do not advance the sequence
 - Easy / Normal / Hard / Very hard / Adaptive AI (starts at 50/100)
 - Fast reserve: start 30 seconds, +5 seconds per completed move, capped at 45 seconds
 - Slow reserve: start 60 seconds, +10 seconds per completed move, capped at 90 seconds
@@ -45,7 +46,7 @@ When you play Black, forbidden empty intersections are marked with **33** (doubl
 
 ## Colour assignment and resignation
 
-Select **Random** under Your stone. Easy, Normal and Hard make an independent random choice at each game start. Adaptive uses a saved alternating sequence, initially Black then White. The next colour is shown in setup. Starting a game consumes one assignment, including an in-game restart; previewing moves and opening settings do not. Fixed Black/White and non-Adaptive games do not consume the Adaptive sequence. Records always store the actual colour used.
+Easy, Normal and Hard offer Black/White/Random; Random makes an independent draw at each game start. Adaptive forces a saved alternating sequence, initially Black then White, and displays the next colour in setup. Very hard forces a random draw. Automatic modes hide the colour selector without overwriting the ordinary-mode preference. Starting an Adaptive game consumes one assignment, including an in-game restart; previews, settings and non-Adaptive games do not. Records always store the actual colour used.
 
 The in-game Home and New Game actions ask for confirmation. Confirming while the game is unfinished records exactly one resignation loss with its played moves and updates Adaptive difficulty as a loss. Leaving an already completed game preserves its result. This applies to these in-app actions; force-quitting the process is not a resignation event.
 

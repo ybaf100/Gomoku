@@ -50,6 +50,13 @@ extension EngineChecks {
         let deadline = ProcessInfo.processInfo.systemUptime
         let timed = boss.chooseMove(board: board([(4,4),(6,8),(8,5),(10,10),(7,9)], [(5,5),(8,8),(9,7),(7,4)]), stone: .black, timeLimit: 0.1)
         require(timed != nil && ProcessInfo.processInfo.systemUptime - deadline < 0.5, "boss deep search also observes short deadline")
+        let fullStart = ProcessInfo.processInfo.systemUptime
+        let fullBoard = board([(4,4),(6,8),(8,5),(10,10),(7,9)], [(5,5),(8,8),(9,7),(7,4)])
+        let fullMove = boss.chooseMove(board: fullBoard, stone: .black, timeLimit: 20)
+        let fullDuration = ProcessInfo.processInfo.systemUptime - fullStart
+        print(String(format: "Boss 7.5-second cap: %.3f seconds", fullDuration))
+        require(fullDuration < 8 && fullMove.map { RenjuRules.isLegalMove(board: fullBoard, move: $0, stone: .black) } == true,
+                "oversized caller budget is capped at 7.5 seconds with a legal completed move")
     }
 
     @MainActor

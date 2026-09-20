@@ -26,6 +26,18 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Validate app icon source
+        run: |
+          python3 - <<'PY'
+          import struct
+          from pathlib import Path
+          data = Path('Gomoku/Assets.xcassets/AppIcon.appiconset/AppIcon.png').read_bytes()
+          assert data[:8] == b'\x89PNG\r\n\x1a\n'
+          assert struct.unpack('>II', data[16:24]) == (1024, 1024)
+          assert data[25] == 2, 'App icon must be opaque RGB'
+          print('App icon: 1024x1024 opaque RGB PNG')
+          PY
+
       - name: Build unsigned app
         run: |
           xcodebuild \
@@ -38,6 +50,11 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build
+
+      - name: Verify app icon is bundled
+        run: |
+          test -f build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app/Assets.car
+          test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app/Info.plist)" = AppIcon
 
       - name: Package IPA
         run: |

@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showHistory = false
     @State private var showSettings = false
     @State private var showAchievements = false
+    @State private var focusUnlocks = false
     @State private var pendingAction: GameAction?
     @State private var showLeaveConfirmation = false
 
@@ -63,7 +64,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showAchievements) {
-            NavigationStack { AchievementsView(game: game, language: language) }
+            NavigationStack { AchievementsView(game: game, language: language, focusUnlocks: focusUnlocks) }
         }
         .confirmationDialog(
             L10n.text("leaveGameTitle", language),
@@ -112,6 +113,7 @@ struct ContentView: View {
             }
             Spacer(minLength: 4)
             QuietIconButton(title: L10n.choose("도전과제", "Achievements", language), symbol: "trophy") {
+                focusUnlocks = false
                 showAchievements = true
             }
             .overlay(alignment: .topTrailing) {
@@ -270,7 +272,7 @@ struct ContentView: View {
                         }
                         BossDifficultyCard(progress: game.achievements, selected: game.difficulty == .veryHard, language: language) {
                             if game.achievements.bossUnlocked { game.difficulty = .veryHard }
-                            else { showAchievements = true }
+                            else { focusUnlocks = true; showAchievements = true }
                         }
                         if game.difficulty == .adaptive {
                             VStack(alignment: .leading, spacing: 8) {
