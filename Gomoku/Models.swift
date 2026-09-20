@@ -29,9 +29,12 @@ enum AIDifficulty: String, CaseIterable, Identifiable, Codable, Sendable {
     case easy
     case normal
     case hard
+    case veryHard
     case adaptive
 
     var id: String { rawValue }
+
+    var automaticColour: Bool { self == .adaptive || self == .veryHard }
 }
 
 /// Setup preference; a live game always uses a concrete Black or White stone.

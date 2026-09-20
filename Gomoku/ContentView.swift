@@ -8,6 +8,8 @@ struct ContentView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showHistory = false
     @State private var showSettings = false
+    @State private var showAchievements = false
+    @State private var focusUnlocks = false
     @State private var pendingAction: GameAction?
     @State private var showLeaveConfirmation = false
 
@@ -45,6 +47,12 @@ struct ContentView: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
+        .fullScreenCover(isPresented: Binding(get: { game.isGameActive && game.completedRecord != nil }, set: { _ in })) {
+            if let record = game.completedRecord {
+                MatchResultView(game: game, record: record, language: language)
+                    .preferredColorScheme(appearance.colorScheme)
+            }
+        }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
                 AppSettingsView(languageRaw: $languageRaw, appearanceRaw: $appearanceRaw)
@@ -54,6 +62,9 @@ struct ContentView: View {
             NavigationStack {
                 GameHistoryView(records: game.records, language: language, onClear: game.clearRecords)
             }
+        }
+        .sheet(isPresented: $showAchievements) {
+            NavigationStack { AchievementsView(game: game, language: language, focusUnlocks: focusUnlocks) }
         }
         .confirmationDialog(
             L10n.text("leaveGameTitle", language),
@@ -101,6 +112,18 @@ struct ContentView: View {
                     .foregroundStyle(theme.secondary)
             }
             Spacer(minLength: 4)
+            QuietIconButton(title: L10n.choose("도전과제", "Achievements", language), symbol: "trophy") {
+                focusUnlocks = false
+                showAchievements = true
+            }
+            .overlay(alignment: .topTrailing) {
+                if game.achievements.pendingCount > 0 {
+                    Text(game.achievements.pendingCount > 99 ? "99+" : "\(game.achievements.pendingCount)")
+                        .font(.system(size: 9, weight: .bold)).padding(4)
+                        .foregroundStyle(.white).background(theme.danger, in: Capsule()).allowsHitTesting(false)
+                }
+            }
+            .accessibilityIdentifier("openAchievements")
             QuietIconButton(title: L10n.text("history", language), symbol: "clock.arrow.circlepath") {
                 showHistory = true
             }
@@ -174,6 +197,12 @@ struct ContentView: View {
                 SmallBadge(text: L10n.text("renju", language))
                 SmallBadge(text: L10n.text("offline", language), symbol: "leaf")
             }
+            if game.achievements.currentStreak > 0 {
+                StreakBadge(count: game.achievements.currentStreak, language: language)
+            }
+            if let title = game.achievements.title(language) {
+                Label(title, systemImage: "seal.fill").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+            }
         }
     }
 
@@ -190,6 +219,12 @@ struct ContentView: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         SectionCaption(number: "01", title: L10n.text("yourStone", language))
+                        if game.difficulty.automaticColour {
+                            Label(L10n.choose(game.difficulty == .adaptive ? "흑백 자동 교대" : "흑백 무작위 배정",
+                                              game.difficulty == .adaptive ? "Alternating colours" : "Random colour assignment", language), systemImage: "shuffle")
+                                .font(.subheadline.bold()).foregroundStyle(theme.accent)
+                                .accessibilityIdentifier("automaticColour")
+                        } else {
                         HStack(spacing: 10) {
                             stoneChoice(.black)
                             stoneChoice(.white)
@@ -209,7 +244,8 @@ struct ContentView: View {
                             }
                         }
                         .accessibilityIdentifier("stone.random")
-                        if game.stoneSelection == .random && game.difficulty == .adaptive {
+                        }
+                        if game.difficulty == .adaptive {
                             Text(L10n.text("nextStone", language) + " · " + L10n.stone(game.nextAdaptiveStone, language: language))
                                 .font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
                                 .accessibilityIdentifier("nextStone")
@@ -219,7 +255,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         SectionCaption(number: "02", title: L10n.text("aiDifficulty", language))
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 9) {
-                            ForEach(AIDifficulty.allCases) { level in
+                            ForEach(AIDifficulty.allCases.filter { $0 != .veryHard }) { level in
                                 SelectionTile(selected: game.difficulty == level, action: { game.difficulty = level }) {
                                     HStack(spacing: 8) {
                                         Image(systemName: difficultySymbol(level))
@@ -233,6 +269,10 @@ struct ContentView: View {
                                 }
                                 .accessibilityIdentifier("difficulty.\(level.rawValue)")
                             }
+                        }
+                        BossDifficultyCard(progress: game.achievements, selected: game.difficulty == .veryHard, language: language) {
+                            if game.achievements.bossUnlocked { game.difficulty = .veryHard }
+                            else { focusUnlocks = true; showAchievements = true }
                         }
                         if game.difficulty == .adaptive {
                             VStack(alignment: .leading, spacing: 8) {
@@ -280,12 +320,12 @@ struct ContentView: View {
                     Button { game.startGame() } label: {
                         HStack {
                             Spacer()
-                            Text(L10n.text("startGame", language))
+                            Text(game.difficulty == .veryHard ? L10n.choose("최종 보스에 도전", "Challenge the final boss", language) : L10n.text("startGame", language))
                             Spacer()
                             Image(systemName: "arrow.up.right")
                         }
                     }
-                    .buttonStyle(GomokuButtonStyle())
+                    .buttonStyle(GomokuButtonStyle(boss: game.difficulty == .veryHard))
                     .accessibilityIdentifier("startGame")
                     Text(L10n.text("startHint", language))
                         .font(.caption)
@@ -336,6 +376,7 @@ struct ContentView: View {
         case .easy: return "leaf"
         case .normal: return "circle.lefthalf.filled"
         case .hard: return "flame"
+        case .veryHard: return "crown.fill"
         case .adaptive: return "sparkles"
         }
     }
@@ -389,9 +430,7 @@ struct ContentView: View {
                 }
             }
         }
-        .overlay {
-            if game.result != nil { resultOverlay }
-        }
+
     }
 
     private var clockRuleCard: some View {
@@ -576,46 +615,4 @@ struct ContentView: View {
         .padding(.horizontal, 8)
     }
 
-    private var resultOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.45).ignoresSafeArea()
-            ScrollView {
-                SurfaceCard {
-                    VStack(spacing: 22) {
-                        Image(systemName: game.result?.playerWon(playerStone: game.playerStone) == true
-                              ? "laurel.leading" : "flag.checkered")
-                            .font(.system(size: 44, weight: .light))
-                            .foregroundStyle(theme.accent)
-                        Text(game.resultTitle(language: language))
-                            .font(.system(.largeTitle, design: .serif, weight: .medium))
-                            .multilineTextAlignment(.center)
-                        Text(L10n.text("recordSaved", language))
-                            .font(.subheadline).foregroundStyle(theme.secondary)
-                        if game.difficulty == .adaptive {
-                            VStack(spacing: 8) {
-                                Text(L10n.text("adaptiveAdjusted", language)).font(.caption)
-                                Text("\(game.adaptiveSkill) / 100")
-                                    .font(.title2.monospacedDigit().bold())
-                            }
-                            .foregroundStyle(theme.accent)
-                        }
-                        Button { game.startGame() } label: {
-                            Label(L10n.text("playAgain", language), systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(GomokuButtonStyle())
-                        Button { game.backToSetup() } label: {
-                            Text(L10n.text("backHome", language))
-                        }
-                        .buttonStyle(GomokuButtonStyle(primary: false))
-                    }
-                    .padding(8)
-                }
-                .frame(maxWidth: 420)
-                .padding(24)
-                .frame(maxWidth: .infinity)
-            }
-            .defaultScrollAnchor(.center)
-        }
-        .accessibilityAddTraits(.isModal)
-    }
 }

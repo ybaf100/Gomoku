@@ -33,6 +33,17 @@ final class AppearanceTests: XCTestCase {
         waitForExpectations(timeout: 20)
     }
 
+    private func expectBossLayout() {
+        let boss = app.buttons["difficulty.veryHard"]
+        // Capture after the selection's layout commit, not the pointer-up frame.
+        expectation(for: NSPredicate(format: "selected == true"), evaluatedWith: boss)
+        waitForExpectations(timeout: 5)
+        let time = app.buttons["time.fast"]
+        XCTAssertLessThanOrEqual(boss.frame.maxY, time.frame.minY, "Boss and time controls must not overlap")
+        XCTAssertFalse(app.buttons["stone.1"].exists)
+        XCTAssertFalse(app.buttons["stone.2"].exists)
+    }
+
     func testThemePersistenceAndGameFlow() {
         tap("openSettings")
         tap("appearance.light")
@@ -123,6 +134,68 @@ final class AppearanceTests: XCTestCase {
         XCTAssertTrue(confirm.isHittable)
         XCTAssertTrue(confirm.isEnabled)
         screenshot("16-phone-game-dark")
+    }
+
+    func testBossAchievementsAndResults() {
+        tap("difficulty.veryHard")
+        XCTAssertTrue(app.buttons["closeAchievements"].waitForExistence(timeout: 10))
+        screenshot("21-achievements-locked-light")
+        tap("closeAchievements")
+        tap("difficulty.adaptive")
+        XCTAssertTrue(app.staticTexts["automaticColour"].exists || app.otherElements["automaticColour"].exists)
+        XCTAssertFalse(app.buttons["stone.1"].exists)
+        XCTAssertFalse(app.buttons["stone.2"].exists)
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-reset", "-ui-testing-boss"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["winStreak"].firstMatch.waitForExistence(timeout: 10))
+        tap("difficulty.veryHard")
+        expectBossLayout()
+        screenshot("22-boss-unlocked-light")
+        tap("openSettings"); tap("appearance.dark"); tap("closeSettings")
+        expectBossLayout()
+        screenshot("23-boss-unlocked-dark")
+        tap("openAchievements")
+        let before = app.staticTexts["totalAP"].label
+        tap("claim.wins")
+        XCTAssertNotEqual(app.staticTexts["totalAP"].label, before)
+        XCTAssertFalse(app.buttons["claim.wins"].exists)
+        screenshot("24-achievements-dark")
+        tap("closeAchievements")
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-result"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["matchResultTitle"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.staticTexts["matchResultTitle"].label, "승리")
+        XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "9 / 9")
+        screenshot("25-victory-numbered-replay-dark")
+        tap("resultReplay.first")
+        XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "0 / 9")
+        tap("resultReplay.next")
+        XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "1 / 9")
+        tap("resultReplay.play")
+        expectation(for: NSPredicate(format: "label != %@", "1 / 9"), evaluatedWith: app.staticTexts["resultReplayProgress"])
+        waitForExpectations(timeout: 5)
+        tap("resultReplay.last")
+        tap("resultAgain")
+        XCTAssertTrue(app.buttons["confirmMove"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["matchResultTitle"].exists)
+        tap("backHome"); tap("confirmLeaveGame")
+        XCTAssertFalse(app.descendants(matching: .any)["winStreak"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["difficulty.veryHard"].isSelected)
+        tap("openSettings"); tap("appearance.light"); tap("closeSettings")
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-result", "-ui-testing-defeat"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["matchResultTitle"].waitForExistence(timeout: 15))
+        XCTAssertEqual(app.staticTexts["matchResultTitle"].label, "패배")
+        XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "10 / 10")
+        screenshot("26-defeat-numbered-replay-light")
+        tap("resultExit")
+        XCTAssertTrue(app.buttons["difficulty.veryHard"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["matchResultTitle"].exists)
     }
 
     func testPlayerOptionsAndForbiddenMarkers() {

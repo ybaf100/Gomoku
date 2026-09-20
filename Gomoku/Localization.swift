@@ -1,6 +1,9 @@
 import Foundation
 
 enum L10n {
+    static func choose(_ korean: String, _ english: String, _ language: AppLanguage) -> String {
+        language == .korean ? korean : english
+    }
     static func text(_ key: String, _ language: AppLanguage) -> String {
         let table = language == .korean ? korean : english
         return table[key] ?? english[key] ?? key
@@ -14,6 +17,8 @@ enum L10n {
             return text("normal", language)
         case .hard:
             return text("hard", language)
+        case .veryHard:
+            return choose("매우 어려움", "Very hard", language)
         case .adaptive:
             if let adaptiveSkill {
                 return "\(text("adaptive", language)) · \(adaptiveSkill)/100"

@@ -6,6 +6,10 @@ enum UITestSupport {
     @MainActor
     static func prepareGameIfRequested(_ game: GameViewModel) {
         let args = ProcessInfo.processInfo.arguments
+        if args.contains("-ui-testing"), args.contains("-ui-testing-result"), !game.isGameActive, game.completedRecord == nil {
+            game.finishUITestGame(fixture(difficulty: .veryHard, defeat: args.contains("-ui-testing-defeat")))
+            return
+        }
         guard args.contains("-ui-testing"), args.contains("-ui-testing-forbidden"), !game.isGameActive else { return }
         game.timeControl = .unlimited
         game.stoneSelection = .black
@@ -21,8 +25,14 @@ enum UITestSupport {
         let defaults = UserDefaults.standard
         if args.contains("-ui-testing-reset") {
             for key in ["gomoku.language", "gomoku.appearance", "gomoku.gameRecords", "gomoku.adaptiveSkill",
-                        "gomoku.stoneSelection", "gomoku.nextAdaptiveStone"] {
+                        "gomoku.stoneSelection", "gomoku.nextAdaptiveStone", "gomoku.archive.v1"] {
                 defaults.removeObject(forKey: key)
+            }
+        }
+        if args.contains("-ui-testing-boss") {
+            let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+            if let data = try? encoder.encode([fixture(difficulty: .hard), fixture(difficulty: .hard)]) {
+                defaults.set(data, forKey: "gomoku.gameRecords")
             }
         }
         if args.contains("-ui-testing-records") {
@@ -41,6 +51,14 @@ enum UITestSupport {
             encoder.dateEncodingStrategy = .iso8601
             if let data = try? encoder.encode([record]) { defaults.set(data, forKey: "gomoku.gameRecords") }
         }
+    }
+
+    private static func fixture(difficulty: AIDifficulty, defeat: Bool = false) -> GameRecord {
+        let points = defeat ? [(0,0),(7,5),(6,5),(7,6),(6,6),(7,7),(8,6),(7,8),(8,7),(7,9)]
+                            : [(7,5),(6,5),(7,6),(6,6),(7,7),(8,6),(7,8),(8,7),(7,9)]
+        return GameRecord(playerStone: .black, difficulty: difficulty, adaptiveSkill: nil,
+                          timeControl: .unlimited, result: defeat ? .whiteWin : .blackWin,
+                          moves: points.enumerated().map { RecordedMove(stone: $0.offset.isMultiple(of: 2) ? .black : .white, move: Move(row: $0.element.0, column: $0.element.1)) })
     }
 }
 #endif

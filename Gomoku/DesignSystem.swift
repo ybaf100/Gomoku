@@ -80,6 +80,7 @@ struct StoneDisc: View {
 
 struct GomokuButtonStyle: ButtonStyle {
     var primary = true
+    var boss = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.isEnabled) private var enabled
 
@@ -89,8 +90,8 @@ struct GomokuButtonStyle: ButtonStyle {
             .font(.system(.body, design: .rounded, weight: .semibold))
             .frame(maxWidth: .infinity, minHeight: 50)
             .padding(.horizontal, 14)
-            .foregroundStyle(primary ? theme.onAccent : theme.ink)
-            .background(primary ? theme.accent : theme.inset, in: RoundedRectangle(cornerRadius: 16))
+            .foregroundStyle(boss ? .white : primary ? theme.onAccent : theme.ink)
+            .background(boss ? Color(hex: 0xA51F35) : primary ? theme.accent : theme.inset, in: RoundedRectangle(cornerRadius: 16))
             .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.4)
             .contentShape(RoundedRectangle(cornerRadius: 16))
     }
