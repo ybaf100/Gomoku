@@ -316,6 +316,8 @@ struct EngineChecks {
     }
 
     static func main() async {
+        replayChecks()
+        await playbackChecks()
         engineChecks()
         progressionChecks()
         await progressionIntegrationChecks()

@@ -6,6 +6,9 @@ struct ContentView: View {
     @AppStorage("gomoku.appearance") private var appearanceRaw = AppearanceMode.system.rawValue
     @Environment(\.colorScheme) private var scheme
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var resultReady = false
+    @State private var finishAnimationStart: Date?
     @State private var showHistory = false
     @State private var showSettings = false
     @State private var showAchievements = false
@@ -35,6 +38,7 @@ struct ContentView: View {
             .background { GameBackdrop() }
             .toolbar(.hidden, for: .navigationBar)
             .foregroundStyle(theme.ink)
+            .accessibilityHidden(resultReady && game.isGameActive && game.completedRecord != nil)
         }
         .tint(theme.accent)
         .onAppear {
@@ -47,9 +51,24 @@ struct ContentView: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
         }
-        .fullScreenCover(isPresented: Binding(get: { game.isGameActive && game.completedRecord != nil }, set: { _ in })) {
+        .task(id: game.completedRecord?.id) {
+            resultReady = false
+            finishAnimationStart = nil
+            guard let record = game.completedRecord, game.isGameActive else { return }
+            let pattern = VictoryPattern(record: record)
+            if !pattern.isEmpty {
+                finishAnimationStart = Date()
+                if !reduceMotion {
+                    do { try await Task.sleep(for: .seconds(pattern.duration + 0.35)) } catch { return }
+                }
+            }
+            guard !Task.isCancelled, game.isGameActive, game.completedRecord?.id == record.id else { return }
+            resultReady = true
+        }
+        .fullScreenCover(isPresented: Binding(get: { resultReady && game.isGameActive && game.completedRecord != nil }, set: { _ in })) {
             if let record = game.completedRecord {
                 MatchResultView(game: game, record: record, language: language)
+                    .id(record.id)
                     .preferredColorScheme(appearance.colorScheme)
             }
         }
@@ -58,7 +77,7 @@ struct ContentView: View {
                 AppSettingsView(languageRaw: $languageRaw, appearanceRaw: $appearanceRaw)
             }
         }
-        .sheet(isPresented: $showHistory) {
+        .fullScreenCover(isPresented: $showHistory) {
             NavigationStack {
                 GameHistoryView(records: game.records, language: language, onClear: game.clearRecords)
             }
@@ -455,8 +474,18 @@ struct ContentView: View {
                 enabled: game.currentTurn == game.playerStone && game.result == nil && !game.isThinking && !game.isValidatingMove,
                 language: language,
                 forbiddenMoves: game.showsForbiddenMoves ? game.forbiddenMoves : [:],
+                winningLine: game.completedRecord.map { VictoryPattern(record: $0).stones } ?? [],
                 onSelect: game.selectMove
             )
+            .overlay {
+                if let record = game.completedRecord, let start = finishAnimationStart {
+                    let pattern = VictoryPattern(record: record)
+                    if !pattern.isEmpty {
+                        WinningCelebration(pattern: pattern, startedAt: start, language: language)
+                            .accessibilityIdentifier("liveVictory")
+                    }
+                }
+            }
             HStack {
                 Text("RENJU · 15 × 15").tracking(1.5)
                 Spacer()

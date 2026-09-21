@@ -7,7 +7,19 @@ enum UITestSupport {
     static func prepareGameIfRequested(_ game: GameViewModel) {
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-ui-testing"), args.contains("-ui-testing-result"), !game.isGameActive, game.completedRecord == nil {
-            game.finishUITestGame(fixture(difficulty: .veryHard, defeat: args.contains("-ui-testing-defeat")))
+            if args.contains("-ui-testing-six") {
+                var moves: [RecordedMove] = []
+                for (index, column) in [3, 4, 5, 7, 8, 6].enumerated() {
+                    moves.append(RecordedMove(stone: .black, move: Move(row: index * 2, column: 0)))
+                    moves.append(RecordedMove(stone: .white, move: Move(row: 7, column: column)))
+                }
+                game.finishUITestGame(GameRecord(playerStone: .black, difficulty: .normal, adaptiveSkill: nil,
+                                                timeControl: .unlimited,
+                                                result: args.contains("-ui-testing-resigned") ? .blackResigned : .whiteWin,
+                                                moves: moves))
+            } else {
+                game.finishUITestGame(fixture(difficulty: .veryHard, defeat: args.contains("-ui-testing-defeat")))
+            }
             return
         }
         guard args.contains("-ui-testing"), args.contains("-ui-testing-forbidden"), !game.isGameActive else { return }
@@ -25,7 +37,7 @@ enum UITestSupport {
         let defaults = UserDefaults.standard
         if args.contains("-ui-testing-reset") {
             for key in ["gomoku.language", "gomoku.appearance", "gomoku.gameRecords", "gomoku.adaptiveSkill",
-                        "gomoku.stoneSelection", "gomoku.nextAdaptiveStone", "gomoku.archive.v1"] {
+                        "gomoku.stoneSelection", "gomoku.nextAdaptiveStone", "gomoku.archive.v1", "gomoku.replay.speed"] {
                 defaults.removeObject(forKey: key)
             }
         }

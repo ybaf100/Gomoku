@@ -56,6 +56,22 @@ jobs:
           test -f build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app/Assets.car
           test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app/Info.plist)" = AppIcon
 
+      - name: Package generated Xcode project and sources
+        run: |
+          mkdir -p build/Gomoku-Xcode
+          cp -R Gomoku.xcodeproj Gomoku GomokuUITests Tests project.yml README.md build/Gomoku-Xcode/
+          git rev-parse HEAD > build/Gomoku-Xcode/SOURCE-COMMIT.txt
+          cd build
+          zip -qry Gomoku-Xcode.zip Gomoku-Xcode
+
+      - name: Upload generated Xcode project
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gomoku-Xcode
+          path: build/Gomoku-Xcode.zip
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Package IPA
         run: |
           APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name 'Gomoku.app' -print -quit)"
@@ -83,7 +99,7 @@ jobs:
           mkdir -p build
           swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift Gomoku/Localization.swift Gomoku/Achievements.swift \
             Gomoku/RenjuRules.swift Gomoku/GomokuAI.swift Gomoku/GameViewModel.swift \
-            Tests/EngineChecks.swift Tests/ProgressionChecks.swift -o build/engine-checks
+            Gomoku/ReplayState.swift Tests/EngineChecks.swift Tests/ProgressionChecks.swift Tests/ReplayChecks.swift -o build/engine-checks
       - name: Verify rules, tactics, deadline and UI responsiveness
         run: build/engine-checks
       - name: Measure the previous forbidden-check implementation
@@ -101,7 +117,7 @@ jobs:
 
   design-check:
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -135,6 +151,7 @@ jobs:
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPad.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow \
             -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults \
+            -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation \
             -only-testing:GomokuUITests/AppearanceTests/testPlayerOptionsAndForbiddenMarkers CODE_SIGNING_ALLOWED=NO
       - name: Verify system appearance
         if: matrix.device == 'iPad'
@@ -155,7 +172,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPHONE_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPhone.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testCompactLayout \
-            -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults CODE_SIGNING_ALLOWED=NO
+            -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults \
+            -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation CODE_SIGNING_ALLOWED=NO
       - name: Export simulator screenshots
         if: always()
         run: |
