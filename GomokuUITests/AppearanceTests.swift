@@ -25,6 +25,22 @@ final class AppearanceTests: XCTestCase {
         add(attachment)
     }
 
+    private func expectProgress(_ id: String, _ value: String) {
+        let progress = app.staticTexts[id]
+        XCTAssertTrue(progress.waitForExistence(timeout: 15))
+        expectation(for: NSPredicate(format: "label == %@", value), evaluatedWith: progress)
+        waitForExpectations(timeout: 15)
+    }
+
+    private func expectWholeBoard() {
+        let top = app.buttons["intersection.A1"], bottom = app.buttons["intersection.O15"]
+        XCTAssertTrue(top.exists && bottom.exists)
+        XCTAssertGreaterThan(top.frame.width, 8, "Replay must have a real square layout")
+        XCTAssertGreaterThanOrEqual(top.frame.minY, app.frame.minY)
+        XCTAssertLessThanOrEqual(bottom.frame.maxY, app.frame.maxY)
+        XCTAssertGreaterThan(bottom.frame.midY - top.frame.midY, 150)
+    }
+
     private func expectAppearance(_ value: String) {
         let status = app.descendants(matching: .any)["effectiveAppearance"].firstMatch
         XCTAssertTrue(status.waitForExistence(timeout: 10))
@@ -73,8 +89,9 @@ final class AppearanceTests: XCTestCase {
         tap("openHistory")
         screenshot("06-history-dark")
         tap("record.00000000-0000-0000-0000-000000000001")
-        tap("replay.last")
-        XCTAssertEqual(app.staticTexts["replayProgress"].label, "9 / 9")
+        expectProgress("replayProgress", "9 / 9")
+        XCTAssertEqual(app.buttons["intersection.H8"].value as? String, "5수")
+        expectWholeBoard()
         screenshot("07-replay-dark")
         tap("replay.previous")
         XCTAssertEqual(app.staticTexts["replayProgress"].label, "8 / 9")
@@ -169,12 +186,17 @@ final class AppearanceTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["matchResultTitle"].waitForExistence(timeout: 15))
         XCTAssertEqual(app.staticTexts["matchResultTitle"].label, "승리")
-        XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "9 / 9")
+        expectProgress("resultReplayProgress", "9 / 9")
+        expectWholeBoard()
         screenshot("25-victory-numbered-replay-dark")
         tap("resultReplay.first")
         XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "0 / 9")
         tap("resultReplay.next")
         XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "1 / 9")
+        let speed = app.sliders["resultReplay.speed"]
+        if !speed.isHittable { app.swipeUp() }
+        speed.adjust(toNormalizedSliderPosition: 0)
+        XCTAssertEqual(app.staticTexts["resultReplay.speedValue"].label, "0.5×")
         tap("resultReplay.play")
         expectation(for: NSPredicate(format: "label != %@", "1 / 9"), evaluatedWith: app.staticTexts["resultReplayProgress"])
         waitForExpectations(timeout: 5)
@@ -191,11 +213,37 @@ final class AppearanceTests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["matchResultTitle"].waitForExistence(timeout: 15))
         XCTAssertEqual(app.staticTexts["matchResultTitle"].label, "패배")
-        XCTAssertEqual(app.staticTexts["resultReplayProgress"].label, "10 / 10")
+        expectProgress("resultReplayProgress", "10 / 10")
         screenshot("26-defeat-numbered-replay-light")
         tap("resultExit")
         XCTAssertTrue(app.buttons["difficulty.veryHard"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["matchResultTitle"].exists)
+    }
+
+    func testSixStoneReplayAndResignation() {
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-reset", "-ui-testing-result", "-ui-testing-six"]
+        app.launch()
+        expectProgress("resultReplayProgress", "12 / 12")
+        let victory = app.descendants(matching: .any)["resultReplay.victory"].firstMatch
+        XCTAssertTrue(victory.waitForExistence(timeout: 10))
+        XCTAssertEqual(victory.value as? String, "D8 → I8", "A middle winning move must sweep from the left endpoint")
+        XCTAssertEqual(app.buttons["intersection.G8"].value as? String, "12수")
+        expectWholeBoard()
+        screenshot("27-white-six-gold-endpoint-sweep")
+        tap("resultReplay.first")
+        XCTAssertFalse(victory.exists)
+        XCUIDevice.shared.orientation = .landscapeLeft
+        expectProgress("resultReplayProgress", "0 / 12")
+        tap("resultReplay.last")
+        expectProgress("resultReplayProgress", "12 / 12")
+        screenshot("28-replay-rotated")
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-reset", "-ui-testing-result", "-ui-testing-six", "-ui-testing-resigned"]
+        app.launch()
+        expectProgress("resultReplayProgress", "12 / 12")
+        XCTAssertFalse(app.descendants(matching: .any)["resultReplay.victory"].firstMatch.exists)
+        screenshot("29-resignation-without-gold-line")
     }
 
     func testPlayerOptionsAndForbiddenMarkers() {

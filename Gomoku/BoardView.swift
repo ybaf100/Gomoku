@@ -65,12 +65,12 @@ struct BoardView: View {
                             context.draw(Text("\(number)")
                                 .font(.system(size: spacing * (number >= 100 ? 0.32 : 0.43), weight: .bold, design: .rounded))
                                 .foregroundColor(stone == .black ? .white : Color(hex: 0x14251F)), at: center)
-                            if lastMove == point || winningLine.contains(point) {
+                            if lastMove == point && !winningLine.contains(point) {
                                 let diameter = spacing * 0.92
                                 context.stroke(Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)),
                                                with: .color(lastMove == point ? theme.danger : theme.boardAccent), lineWidth: max(1.3, spacing * 0.055))
                             }
-                        } else if lastMove == point {
+                        } else if lastMove == point && !winningLine.contains(point) {
                             let diameter = max(3, spacing * 0.18)
                             let center = CGPoint(x: margin + Double(column) * spacing,
                                                  y: margin + Double(row) * spacing)
