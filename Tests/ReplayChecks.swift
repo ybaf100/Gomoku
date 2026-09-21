@@ -76,6 +76,10 @@ extension EngineChecks {
         player.setSpeed(16); player.toggle(); player.pause()
         try? await Task.sleep(for: .milliseconds(100))
         require(player.ply == 3, "leaving replay cancels outstanding ticks")
+        player.toggle()
+        for _ in 0..<100 where player.ply == 3 { try? await Task.sleep(for: .milliseconds(10)) }
+        require(player.ply > 3, "manual replay advances after a seek and speed change")
+        player.pause()
         player.seek(99)
         require(player.ply == 9 && player.celebrationStart != nil, "manual seek to end can replay celebration")
         let reduced = ReplayPlayback(record: record, defaults: defaults)

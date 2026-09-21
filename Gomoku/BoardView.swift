@@ -10,6 +10,7 @@ struct BoardView: View {
     var forbiddenMoves: [Move: ForbiddenReason] = [:]
     var moveNumbers: [Move: Int] = [:]
     var winningLine: Set<Move> = []
+    var accessibilityPrefix = "intersection"
     let onSelect: (Move) -> Void
     @Environment(\.colorScheme) private var scheme
 
@@ -142,7 +143,7 @@ struct BoardView: View {
                             .accessibilityValue(moveNumbers[move].map { L10n.choose("\($0)수", "Move \($0)", language) } ?? forbiddenMoves[move].map {
                                 L10n.notice(.forbidden($0), language: language)
                             } ?? "")
-                            .accessibilityIdentifier("intersection.\(move.coordinate)")
+                            .accessibilityIdentifier("\(accessibilityPrefix).\(move.coordinate)")
                         }
                     }
                 }

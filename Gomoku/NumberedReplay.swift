@@ -12,7 +12,8 @@ struct NumberedReplay: View {
             BoardView(board: playback.position.board, lastMove: playback.position.last, selectedMove: nil,
                       previewStone: .black, enabled: false, language: language,
                       moveNumbers: playback.position.numbers,
-                      winningLine: playback.ply == playback.record.moves.count ? playback.victory.stones : []) { _ in }
+                      winningLine: playback.ply == playback.record.moves.count ? playback.victory.stones : [],
+                      accessibilityPrefix: "\(idPrefix).intersection") { _ in }
                 .frame(width: boardSize, height: boardSize)
                 .overlay {
                     if let start = playback.celebrationStart, !playback.victory.isEmpty {
@@ -20,7 +21,6 @@ struct NumberedReplay: View {
                             .accessibilityIdentifier("\(idPrefix).victory")
                     }
                 }
-                .accessibilityIdentifier("numberedBoard")
             VStack(spacing: 8) {
                 HStack {
                     Text(L10n.choose(playback.automatic ? "자동 타임랩스" : "착수 순서", playback.automatic ? "Timelapse" : "Move order", language))

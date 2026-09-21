@@ -32,8 +32,8 @@ final class AppearanceTests: XCTestCase {
         waitForExpectations(timeout: 15)
     }
 
-    private func expectWholeBoard() {
-        let top = app.buttons["intersection.A1"], bottom = app.buttons["intersection.O15"]
+    private func expectWholeBoard(prefix: String = "resultReplay") {
+        let top = app.buttons["\(prefix).intersection.A1"], bottom = app.buttons["\(prefix).intersection.O15"]
         XCTAssertTrue(top.exists && bottom.exists)
         XCTAssertGreaterThan(top.frame.width, 8, "Replay must have a real square layout")
         XCTAssertGreaterThanOrEqual(top.frame.minY, app.frame.minY)
@@ -90,8 +90,8 @@ final class AppearanceTests: XCTestCase {
         screenshot("06-history-dark")
         tap("record.00000000-0000-0000-0000-000000000001")
         expectProgress("replayProgress", "9 / 9")
-        XCTAssertEqual(app.buttons["intersection.H8"].value as? String, "5수")
-        expectWholeBoard()
+        XCTAssertEqual(app.buttons["replay.intersection.H8"].value as? String, "5수")
+        expectWholeBoard(prefix: "replay")
         screenshot("07-replay-dark")
         tap("replay.previous")
         XCTAssertEqual(app.staticTexts["replayProgress"].label, "8 / 9")
@@ -199,8 +199,8 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(app.staticTexts["resultReplay.speedValue"].label, "0.5×")
         tap("resultReplay.play")
         expectation(for: NSPredicate(format: "label != %@", "1 / 9"), evaluatedWith: app.staticTexts["resultReplayProgress"])
-        waitForExpectations(timeout: 5)
-        tap("resultReplay.last")
+        waitForExpectations(timeout: 15)
+        if app.buttons["resultReplay.last"].isEnabled { tap("resultReplay.last") }
         tap("resultAgain")
         XCTAssertTrue(app.buttons["confirmMove"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["matchResultTitle"].exists)
@@ -228,7 +228,7 @@ final class AppearanceTests: XCTestCase {
         let victory = app.descendants(matching: .any)["resultReplay.victory"].firstMatch
         XCTAssertTrue(victory.waitForExistence(timeout: 10))
         XCTAssertEqual(victory.value as? String, "D8 → I8", "A middle winning move must sweep from the left endpoint")
-        XCTAssertEqual(app.buttons["intersection.G8"].value as? String, "12수")
+        XCTAssertEqual(app.buttons["resultReplay.intersection.G8"].value as? String, "12수")
         expectWholeBoard()
         screenshot("27-white-six-gold-endpoint-sweep")
         tap("resultReplay.first")

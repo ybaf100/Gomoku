@@ -38,6 +38,7 @@ struct ContentView: View {
             .background { GameBackdrop() }
             .toolbar(.hidden, for: .navigationBar)
             .foregroundStyle(theme.ink)
+            .accessibilityHidden(resultReady && game.isGameActive && game.completedRecord != nil)
         }
         .tint(theme.accent)
         .onAppear {
