@@ -21,6 +21,15 @@ struct NumberedReplay: View {
                             .accessibilityIdentifier("\(idPrefix).victory")
                     }
                 }
+            if playback.celebrationStart != nil && !playback.victory.isEmpty {
+                Text(L10n.choose("승리 줄", "Winning line", language))
+                    .font(.system(size: 1))
+                    .foregroundStyle(.clear)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.choose("완성된 승리 줄", "Winning line", language))
+                    .accessibilityValue(playback.victory.runs.map { "\($0.start.coordinate) → \($0.end.coordinate)" }.joined(separator: ", "))
+                    .accessibilityIdentifier("\(idPrefix).victory")
+            }
             VStack(spacing: 8) {
                 HStack {
                     Text(L10n.choose(playback.automatic ? "자동 타임랩스" : "착수 순서", playback.automatic ? "Timelapse" : "Move order", language))
@@ -46,7 +55,7 @@ struct NumberedReplay: View {
                     Image(systemName: "speedometer").accessibilityHidden(true)
                     Text(L10n.choose("재생 속도", "Speed", language)).font(.caption)
                     Spacer()
-                    Text(playback.speed.formatted(.number.precision(.fractionLength(0...1))) + "×")
+                    Text(speedLabel)
                         .font(.caption.monospacedDigit().bold()).accessibilityIdentifier("\(idPrefix).speedValue")
                 }.padding(.top, 6)
                 Slider(value: Binding(get: { playback.speed }, set: { playback.setSpeed($0) }), in: 0.5...16, step: 0.5)
@@ -62,5 +71,9 @@ struct NumberedReplay: View {
     private func control(_ id: String, _ symbol: String, disabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol).frame(maxWidth: .infinity, minHeight: 44) }
             .disabled(disabled).accessibilityLabel(L10n.text(id, language)).accessibilityIdentifier("\(idPrefix).\(id)")
+    }
+
+    private var speedLabel: String {
+        playback.speed < 1 ? "0.5×" : "\(Int(playback.speed.rounded()))×"
     }
 }
