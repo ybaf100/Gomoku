@@ -106,6 +106,13 @@ final class ReplayPlayback: ObservableObject {
     private let speedKey = "gomoku.replay.speed"
     var position: ReplayPosition { ReplayPosition(record: record, ply: ply) }
     var interval: TimeInterval { 0.7 / speed }
+    var speedLabel: String {
+        let value = (speed * 2).rounded() / 2
+        if value == value.rounded() {
+            return "\(Int(value))×"
+        }
+        return String(format: "%.1f×", value)
+    }
 
     init(record: GameRecord, defaults: UserDefaults = .standard) {
         self.record = record; self.defaults = defaults
