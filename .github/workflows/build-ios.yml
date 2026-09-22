@@ -133,8 +133,9 @@ jobs:
         run: |
           mkdir -p build
           swiftc -O -parse-as-library Gomoku/Models.swift Gomoku/MatchClock.swift Gomoku/Localization.swift Gomoku/Achievements.swift \
-            Gomoku/RenjuRules.swift Gomoku/GomokuAI.swift Gomoku/GameViewModel.swift \
-            Gomoku/ReplayState.swift Tests/EngineChecks.swift Tests/ProgressionChecks.swift Tests/ReplayChecks.swift -o build/engine-checks
+            Gomoku/RenjuRules.swift Gomoku/GomokuAI.swift Gomoku/GameViewModel.swift Gomoku/LocalMatchCore.swift \
+            Gomoku/ReplayState.swift Tests/EngineChecks.swift Tests/ProgressionChecks.swift Tests/ReplayChecks.swift \
+            Tests/LocalMatchChecks.swift -o build/engine-checks
       - name: Verify rules, tactics, deadline and UI responsiveness
         run: build/engine-checks
       - name: Measure the previous forbidden-check implementation
@@ -223,7 +224,8 @@ jobs:
             -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow \
             -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults \
             -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation \
-            -only-testing:GomokuUITests/AppearanceTests/testPlayerOptionsAndForbiddenMarkers CODE_SIGNING_ALLOWED=NO
+            -only-testing:GomokuUITests/AppearanceTests/testPlayerOptionsAndForbiddenMarkers \
+            -only-testing:GomokuUITests/AppearanceTests/testLocalSetupAndMenu CODE_SIGNING_ALLOWED=NO
       - name: Verify system appearance
         if: matrix.device == 'iPad'
         run: |
@@ -243,7 +245,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPHONE_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPhone.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testCompactLayout \
-            -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation CODE_SIGNING_ALLOWED=NO
+            -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation \
+            -only-testing:GomokuUITests/AppearanceTests/testLocalSetupAndMenu CODE_SIGNING_ALLOWED=NO
       - name: Export simulator screenshots
         if: always()
         run: |

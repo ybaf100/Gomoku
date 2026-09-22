@@ -100,9 +100,15 @@ struct BossDifficultyCard: View {
 }
 
 struct AchievementsView: View {
+    private enum Filter: String, CaseIterable, Identifiable {
+        case all, inProgress, claimable, completed
+        var id: String { rawValue }
+    }
+
     @ObservedObject var game: GameViewModel
     let language: AppLanguage
     var focusUnlocks = false
+    @State private var filter: Filter = .all
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
     private var theme: GomokuTheme { GomokuTheme(scheme) }
@@ -111,24 +117,43 @@ struct AchievementsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 SurfaceCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Image(systemName: "trophy.fill").foregroundStyle(theme.accent)
-                            Text("\(game.achievements.totalAP) AP").font(.largeTitle.bold()).monospacedDigit().accessibilityIdentifier("totalAP")
-                            Spacer()
-                            Text(L10n.choose("미수령 \(game.achievements.pendingCount)", "\(game.achievements.pendingCount) unclaimed", language)).font(.caption)
+                    VStack(alignment: .leading, spacing: 14) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 145), spacing: 12)], alignment: .leading, spacing: 12) {
+                            summaryItem(
+                                symbol: "sparkles",
+                                label: L10n.choose("총 AP", "Total AP", language),
+                                value: "\(game.achievements.totalAP) AP",
+                                id: "totalAP"
+                            )
+                            summaryItem(
+                                symbol: "gift.fill",
+                                label: L10n.choose("수령 가능", "Claimable", language),
+                                value: "\(game.achievements.pendingCount)",
+                                id: "pendingRewards"
+                            )
+                            summaryItem(
+                                symbol: "person.crop.rectangle",
+                                label: L10n.choose("장착 칭호", "Equipped title", language),
+                                value: game.achievements.title(language) ?? L10n.choose("없음", "None", language),
+                                id: "equippedTitle"
+                            )
                         }
-                        Text(game.achievements.title(language) ?? L10n.choose("장착한 칭호 없음", "No title equipped", language)).font(.subheadline)
                         if game.achievements.equippedTitle != nil {
                             Button(L10n.choose("칭호 해제", "Remove title", language)) { game.equipTitle(nil) }
                                 .accessibilityIdentifier("unequipTitle")
                         }
                     }
                 }
-                Text(L10n.choose("성장형", "Progressive", language)).font(.title2.bold())
-                ForEach(AchievementDefinition.all.filter(\.progressive)) { card($0) }
-                Text(L10n.choose("단일형", "One-time", language)).font(.title2.bold())
-                ForEach(AchievementDefinition.all.filter { !$0.progressive }) { card($0) }
+                Picker(L10n.choose("도전과제 필터", "Achievement filter", language), selection: $filter) {
+                    Text(L10n.choose("전체", "All", language)).tag(Filter.all)
+                    Text(L10n.choose("진행 중", "In progress", language)).tag(Filter.inProgress)
+                    Text(L10n.choose("수령 가능", "Claimable", language)).tag(Filter.claimable)
+                    Text(L10n.choose("완료", "Complete", language)).tag(Filter.completed)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("achievementFilter")
+
+                ForEach(filteredDefinitions) { card($0) }
             }
             .padding(20).frame(maxWidth: 720).frame(maxWidth: .infinity)
         }
@@ -142,6 +167,37 @@ struct AchievementsView: View {
         } }
     }
 
+    private var filteredDefinitions: [AchievementDefinition] {
+        AchievementDefinition.all.filter { definition in
+            let level = game.achievements.level(definition.id)
+            let maxed = level == definition.thresholds.count
+            let metric = game.achievements.metrics[definition.metric, default: 0]
+            let pending = game.achievements.rewards.contains {
+                $0.achievementID == definition.id && $0.claimedAt == nil
+            }
+            switch filter {
+            case .all: return true
+            case .inProgress: return metric > 0 && !maxed && !pending
+            case .claimable: return pending
+            case .completed: return maxed
+            }
+        }
+    }
+
+    private func summaryItem(symbol: String, label: String, value: String, id: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(label, systemImage: symbol)
+                .font(.caption)
+                .foregroundStyle(theme.secondary)
+            Text(value)
+                .font(.headline)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .accessibilityIdentifier(id)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func card(_ definition: AchievementDefinition) -> some View {
         let level = game.achievements.level(definition.id)
         let metric = game.achievements.metrics[definition.metric, default: 0]
@@ -150,6 +206,8 @@ struct AchievementsView: View {
         let previous = level == 0 ? 0 : definition.thresholds[level - 1]
         let ratio = maxed ? 1 : Double(metric - previous) / Double(max(1, next - previous))
         let pending = game.achievements.rewards.filter { $0.achievementID == definition.id && $0.claimedAt == nil }
+        let claimed = game.achievements.rewards.filter { $0.achievementID == definition.id && $0.claimedAt != nil }
+        let earnedAP = claimed.reduce(0) { $0 + $1.amount }
         let color = definition.progressive ? [Color.gray, Color(hex: 0xA36C47), Color(hex: 0x8C9EA8), Color(hex: 0xB88528), Color(hex: 0x62BFB9)][max(0, level - 1)] : definition.rarity.color
         return SurfaceCard {
             VStack(alignment: .leading, spacing: 12) {
@@ -158,23 +216,44 @@ struct AchievementsView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(definition.name(language) + (definition.progressive ? " · " + (level == 0 ? "I" : AchievementDefinition.stages[level - 1]) : ""))
                             .font(.headline)
-                        Text(definition.progressive ? L10n.choose("성장형 · 단계별 보상", "Progressive · Rewards per stage", language) : definition.rarity.name(language))
-                            .font(.caption.weight(.semibold)).foregroundStyle(color)
+                        HStack(spacing: 6) {
+                            Text(definition.rarity.name(language))
+                            if definition.progressive {
+                                Text("·")
+                                Text(L10n.choose("단계형", "Progressive", language))
+                            }
+                        }
+                        .font(.caption.weight(.semibold)).foregroundStyle(color)
                     }
                     Spacer(minLength: 0)
                     if maxed { Text("MAX").font(.caption2.bold()).foregroundStyle(color) }
                 }
-                Text(description(definition)).font(.caption).foregroundStyle(theme.secondary)
-                ProgressView(value: min(1, max(0, ratio))).tint(color)
+                Text(definition.description(language)).font(.caption).foregroundStyle(theme.secondary)
+                ProgressView(value: maxed ? 1 : min(1, max(0, ratio))).tint(color)
+                    .accessibilityValue(maxed ? "100%" : "\(Int(min(1, max(0, ratio)) * 100))%")
                 HStack {
-                    Text(maxed ? "\(metric) · " + L10n.choose("달성", "Complete", language) : "\(metric) / \(next)").monospacedDigit()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(maxed ? "\(metric) · " + L10n.choose("달성", "Complete", language) : "\(metric) / \(next)")
+                            .monospacedDigit()
+                        if definition.progressive && !maxed {
+                            Text(L10n.choose("다음: \(AchievementDefinition.stages[level])", "Next: \(AchievementDefinition.stages[level])", language))
+                                .foregroundStyle(theme.secondary)
+                        }
+                    }
                     Spacer()
-                    Text(pending.isEmpty ? "\(definition.reward(min(level + 1, definition.thresholds.count))) AP" : "+\(pending.reduce(0) { $0 + $1.amount }) AP")
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(pending.isEmpty ? "\(definition.reward(min(level + 1, definition.thresholds.count))) AP" : "+\(pending.reduce(0) { $0 + $1.amount }) AP")
+                        Text(L10n.choose("획득 \(earnedAP) AP", "Earned \(earnedAP) AP", language))
+                            .foregroundStyle(theme.secondary)
+                    }
                 }.font(.caption)
                 HStack {
                     if !pending.isEmpty {
                         Button(L10n.choose("수령", "CLAIM", language)) { game.claimAchievement(definition.id) }
-                            .buttonStyle(GomokuButtonStyle()).accessibilityIdentifier("claim.\(definition.id)")
+                            .buttonStyle(GomokuButtonStyle())
+                            .controlSize(.large)
+                            .accessibilityHint(L10n.choose("\(pending.reduce(0) { $0 + $1.amount }) AP 수령", "Claim \(pending.reduce(0) { $0 + $1.amount }) AP", language))
+                            .accessibilityIdentifier("claim.\(definition.id)")
                     } else {
                         Text(L10n.choose(level > 0 ? "보상 수령 완료" : "미달성", level > 0 ? "Rewards claimed" : "Locked", language))
                             .font(.caption).foregroundStyle(theme.secondary)
@@ -189,6 +268,10 @@ struct AchievementsView: View {
                             }
                         } label: { Label(L10n.choose("칭호", "Title", language), systemImage: "person.crop.rectangle") }
                         .accessibilityIdentifier("title.\(definition.id)")
+                    } else {
+                        Text(L10n.choose("칭호 잠김", "Title locked", language))
+                            .font(.caption2)
+                            .foregroundStyle(theme.secondary)
                     }
                 }
             }
@@ -196,16 +279,4 @@ struct AchievementsView: View {
         .id(definition.id)
     }
 
-    private func description(_ definition: AchievementDefinition) -> String {
-        switch definition.id {
-        case "games", "firstGame": return L10n.choose("기권 없이 종료한 경기", "Finish games without resignation", language)
-        case "streak": return L10n.choose("최고 연승 기록 · 패배·무승부 시 현재 연승 종료", "Best win streak · Loss or draw ends the current streak", language)
-        case "adaptive80": return L10n.choose("지능형 80점 도달 · 매우 어려움 영구 해제", "Reach Adaptive 80 · Permanently unlock Very hard", language)
-        case "hard2": return L10n.choose("어려움 누적 2승 · 매우 어려움 영구 해제", "Win twice on Hard · Permanently unlock Very hard", language)
-        case "bossWins", "firstBoss": return L10n.choose("매우 어려움에서 승리", "Win on Very hard", language)
-        case "blackWins": return L10n.choose("흑으로 승리한 경기", "Games won as Black", language)
-        case "whiteWins": return L10n.choose("백으로 승리한 경기", "Games won as White", language)
-        default: return L10n.choose("모든 난이도 누적 승리", "Total wins across all difficulties", language)
-        }
-    }
 }

@@ -41,6 +41,35 @@ enum AIDifficulty: String, CaseIterable, Identifiable, Codable, Sendable {
     }
 }
 
+/// The engine that actually produced an AI move. This is deliberately carried
+/// with the move instead of inferred from the selected difficulty in the UI.
+enum AIMoveOrigin: String, Codable, Sendable {
+    case nativeSwift
+    case rapfi
+    case swiftFallback
+
+    var showsSwiftFallbackIndicator: Bool { self == .swiftFallback }
+}
+
+struct AIMoveDecision: Sendable {
+    let move: Move
+    let origin: AIMoveOrigin
+}
+
+struct AIEngineIndicatorState: Sendable {
+    private(set) var origin: AIMoveOrigin?
+
+    var showsSwift: Bool { origin?.showsSwiftFallbackIndicator == true }
+
+    mutating func apply(_ origin: AIMoveOrigin) {
+        self.origin = origin
+    }
+
+    mutating func reset() {
+        origin = nil
+    }
+}
+
 /// Setup preference; a live game always uses a concrete Black or White stone.
 enum StoneSelection: String, Codable, Sendable {
     case black

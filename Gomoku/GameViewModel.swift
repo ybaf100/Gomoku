@@ -33,6 +33,7 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var newAchievements: [AchievementReward] = []
     @Published private(set) var completedRecord: GameRecord?
     @Published private(set) var bossJustUnlocked = false
+    @Published private(set) var aiEngineState = AIEngineIndicatorState()
     @Published var isGameActive = false
 
     private let adaptiveSkillKey = "gomoku.adaptiveSkill"
@@ -72,6 +73,8 @@ final class GameViewModel: ObservableObject {
     }
 
     var aiStone: Stone { playerStone.opponent }
+    var aiMoveOrigin: AIMoveOrigin? { aiEngineState.origin }
+    var showsSwiftFallback: Bool { aiEngineState.showsSwift }
 
     var showsForbiddenMoves: Bool {
         isGameActive && result == nil && playerStone == .black && currentTurn == .black
@@ -135,6 +138,7 @@ final class GameViewModel: ObservableObject {
         newAchievements = []
         bossJustUnlocked = false
         completedRecord = nil
+        aiEngineState.reset()
         adaptiveSkillAtStart = difficulty == .adaptive ? adaptiveSkill : nil
         matchClock = MatchClock(configuration: timeControl.clockConfiguration, now: clockNow())
         publishClock()
@@ -390,7 +394,7 @@ final class GameViewModel: ObservableObject {
         aiTask?.cancel()
         aiTask = Task.detached(priority: .userInitiated) { [weak self] in
             let fallback = GomokuAI(difficulty: level, adaptiveSkill: skill)
-            let move: Move
+            let decision: AIMoveDecision
 
 #if RAPFI_ENABLED
             guard !Task.isCancelled else { return }
@@ -401,7 +405,7 @@ final class GameViewModel: ObservableObject {
                    timeLimit: budget,
                    strengthLevel: level == .veryHard ? 100 : skill
                ) {
-                move = rapfiMove
+                decision = AIMoveDecision(move: rapfiMove, origin: .rapfi)
             } else {
                 guard !Task.isCancelled else { return }
                 guard let fallbackMove = fallback.chooseMove(
@@ -409,10 +413,13 @@ final class GameViewModel: ObservableObject {
                     stone: stone,
                     timeLimit: budget
                 ) else {
-                    await self?.completeAIMove(requestID, move: nil, stone: stone)
+                    await self?.completeAIMove(requestID, decision: nil, stone: stone)
                     return
                 }
-                move = fallbackMove
+                decision = AIMoveDecision(
+                    move: fallbackMove,
+                    origin: useRapfi ? .swiftFallback : .nativeSwift
+                )
             }
 #else
             guard let fallbackMove = fallback.chooseMove(
@@ -420,18 +427,18 @@ final class GameViewModel: ObservableObject {
                 stone: stone,
                 timeLimit: budget
             ) else {
-                await self?.completeAIMove(requestID, move: nil, stone: stone)
+                await self?.completeAIMove(requestID, decision: nil, stone: stone)
                 return
             }
-            move = fallbackMove
+            decision = AIMoveDecision(move: fallbackMove, origin: .nativeSwift)
 #endif
 
             guard !Task.isCancelled else { return }
-            await self?.completeAIMove(requestID, move: move, stone: stone)
+            await self?.completeAIMove(requestID, decision: decision, stone: stone)
         }
     }
 
-    private func completeAIMove(_ requestID: UUID, move: Move?, stone: Stone) {
+    private func completeAIMove(_ requestID: UUID, decision: AIMoveDecision?, stone: Stone) {
         guard aiRequestID == requestID, isGameActive, result == nil,
               currentTurn == stone else { return }
         aiRequestID = nil
@@ -439,7 +446,10 @@ final class GameViewModel: ObservableObject {
         isThinking = false
         tickClock()
         guard result == nil else { return }
-        if let move { applyLegalMove(move, stone: stone) }
+        if let decision {
+            aiEngineState.apply(decision.origin)
+            applyLegalMove(decision.move, stone: stone)
+        }
         else { finish(.draw) }
     }
 
@@ -503,6 +513,7 @@ final class GameViewModel: ObservableObject {
         guard result == nil else { return }
 
         result = newResult
+        aiEngineState.reset()
         selectedMove = nil
         isThinking = false
         invalidateAI()
@@ -567,6 +578,9 @@ final class GameViewModel: ObservableObject {
             records = archive.records
             achievements = archive.achievements
             adaptiveSkill = archive.adaptiveSkill
+            achievements.migrateNewMetrics(from: records)
+            achievements.observeSkill(adaptiveSkill)
+            saveRecords()
             return
         }
         guard let data = defaults.data(forKey: recordsKey) else {

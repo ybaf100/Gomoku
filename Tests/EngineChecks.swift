@@ -326,6 +326,7 @@ struct EngineChecks {
         await playbackChecks()
         engineChecks()
         progressionChecks()
+        localMatchChecks()
         await progressionIntegrationChecks()
         clockChecks()
         forbiddenMarkerChecks()
