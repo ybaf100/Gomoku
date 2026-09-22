@@ -20,6 +20,9 @@ final class LocalMatchViewModel: ObservableObject {
     @Published var isGameActive = false
     @Published var unlimited = false
     @Published var customSeconds: Double = 300
+    @Published private(set) var bottomStone: Stone = .black
+
+    var topStone: Stone { bottomStone.opponent }
 
     private var matchClock: MatchClock?
     private var clockTimer: Timer?
@@ -39,8 +42,11 @@ final class LocalMatchViewModel: ObservableObject {
         return ClockConfiguration(initial: seconds, increment: 0, ceiling: seconds)
     }
 
-    func startGame() {
+    func startGame(swapSides: Bool = false) {
         stop()
+        if swapSides {
+            bottomStone = bottomStone.opponent
+        }
         board = Array(
             repeating: Array(repeating: Stone.empty, count: RenjuRules.boardSize),
             count: RenjuRules.boardSize
@@ -57,6 +63,10 @@ final class LocalMatchViewModel: ObservableObject {
         isGameActive = true
         startClock()
         refreshForbiddenMoves()
+    }
+
+    func rematch() {
+        startGame(swapSides: true)
     }
 
     func stop() {
@@ -353,8 +363,8 @@ struct LocalMatchView: View {
                               systemImage: "person.2.fill")
                             .font(.headline)
                         Text(L10n.choose(
-                            "아래쪽은 흑, 위쪽은 백입니다. 흑이 먼저 두며 렌주 금수 규칙은 AI 대전과 동일하게 적용됩니다.",
-                            "Black plays from the bottom and White from the top. Black moves first and the same Renju forbidden rules apply.",
+                            "첫 판은 아래쪽이 흑, 위쪽이 백입니다. 흑이 먼저 두며, 다시 대결할 때마다 두 플레이어의 흑백 위치가 서로 바뀝니다.",
+                            "The first game starts with Black at the bottom and White at the top. Black moves first, and the players swap colours after every rematch.",
                             language
                         ))
                         .font(.subheadline)
@@ -412,7 +422,7 @@ struct LocalMatchView: View {
     private func matchScreen(size: CGSize) -> some View {
         let boardSide = min(size.width - 28, size.height - 330)
         return VStack(spacing: 10) {
-            playerPanel(stone: .white, positionText: L10n.choose("위쪽 플레이어", "Top player", language))
+            playerPanel(stone: game.topStone, positionText: L10n.choose("위쪽 플레이어", "Top player", language))
                 .rotationEffect(.degrees(180))
 
             ZStack {
@@ -440,7 +450,7 @@ struct LocalMatchView: View {
             }
             .frame(maxWidth: .infinity)
 
-            playerPanel(stone: .black, positionText: L10n.choose("아래쪽 플레이어", "Bottom player", language))
+            playerPanel(stone: game.bottomStone, positionText: L10n.choose("아래쪽 플레이어", "Bottom player", language))
         }
         .overlay(alignment: .topTrailing) {
             Button {
@@ -461,9 +471,9 @@ struct LocalMatchView: View {
                     Text(game.resultTitle(language: language))
                         .font(.system(.title2, design: .rounded, weight: .bold))
                     HStack(spacing: 10) {
-                        Button(L10n.text("playAgain", language)) { game.startGame() }
+                        Button(L10n.choose("다시 대결", "Rematch", language)) { game.rematch() }
                             .buttonStyle(GomokuButtonStyle())
-                        Button(L10n.text("backHome", language)) {
+                        Button(L10n.choose("나가기", "Exit", language)) {
                             game.stop()
                             dismiss()
                         }
