@@ -303,20 +303,12 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  design-check-iphone-shard:
-    name: design-check (iPhone-${{ matrix.shard }})
+  design-check-iphone:
+    name: design-check (iPhone)
     needs: validation_scope
     if: needs.validation_scope.outputs.run_heavy_ui == 'true'
     runs-on: macos-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - shard: layout
-            tests: GomokuUITests/AppearanceTests/testCompactLayout,GomokuUITests/AppearanceTests/testLocalSetupAndMenu
-          - shard: replay
-            tests: GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation
     steps:
       - uses: actions/checkout@v4
         with:
@@ -335,26 +327,18 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as f:
               f.write('SIM_ID=' + phone['udid'] + '\n')
           PY
-      - name: Verify iPhone ${{ matrix.shard }} regression
-        env:
-          TESTS: ${{ matrix.tests }}
+      - name: Verify compact layout and replay on iPhone
         run: |
           xcrun simctl boot "$SIM_ID"
           xcrun simctl bootstatus "$SIM_ID" -b
           xcrun simctl ui "$SIM_ID" appearance light
           xcrun simctl status_bar "$SIM_ID" override --time '9:41' --batteryState charged --batteryLevel 100
-
-          IFS=',' read -r -a selected_tests <<< "$TESTS"
-          only_testing=()
-          for test_name in "${selected_tests[@]}"; do
-            only_testing+=("-only-testing:$test_name")
-          done
-
           xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIM_ID" \
-            -parallel-testing-enabled NO \
-            -resultBundlePath "build/Design-iPhone-${{ matrix.shard }}.xcresult" \
-            "${only_testing[@]}" \
+            -parallel-testing-enabled NO -resultBundlePath build/Design-iPhone.xcresult \
+            -only-testing:GomokuUITests/AppearanceTests/testCompactLayout \
+            -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation \
+            -only-testing:GomokuUITests/AppearanceTests/testLocalSetupAndMenu \
             COMPILER_INDEX_STORE_ENABLE=NO ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO
       - name: Export simulator screenshots
         if: always()
@@ -369,28 +353,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Gomoku-Design-Previews-iPhone-${{ matrix.shard }}
+          name: Gomoku-Design-Previews-iPhone
           path: build/DesignPreviews
           if-no-files-found: warn
           retention-days: 14
-
-  design-check-iphone:
-    name: design-check (iPhone)
-    runs-on: ubuntu-latest
-    needs: [validation_scope, design-check-iphone-shard]
-    if: always()
-    steps:
-      - name: Report iPhone validation status
-        env:
-          RUN_HEAVY_UI: ${{ needs.validation_scope.outputs.run_heavy_ui }}
-          SHARD_RESULT: ${{ needs.design-check-iphone-shard.result }}
-          REASON: ${{ needs.validation_scope.outputs.reason }}
-        run: |
-          if [[ "$RUN_HEAVY_UI" != "true" ]]; then
-            echo "iPhone UI regression skipped: $REASON"
-            exit 0
-          fi
-          test "$SHARD_RESULT" = "success"
 
   design-check-ipad-shard:
     name: design-check (iPad-${{ matrix.shard }})
