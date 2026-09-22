@@ -153,6 +153,17 @@ final class AppearanceTests: XCTestCase {
         screenshot("16-phone-game-dark")
     }
 
+    func testEmbeddedRapfiReturnsMove() {
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-reset", "-ui-testing-rapfi-smoke"]
+        app.launch()
+
+        let status = app.staticTexts["rapfiSmokeStatus"]
+        XCTAssertTrue(status.waitForExistence(timeout: 15), "Rapfi smoke status was not published")
+        expectation(for: NSPredicate(format: "label BEGINSWITH %@", "ok:"), evaluatedWith: status)
+        waitForExpectations(timeout: 15)
+    }
+
     func testBossAchievementsAndResults() {
         tap("difficulty.veryHard")
         XCTAssertTrue(app.buttons["closeAchievements"].waitForExistence(timeout: 10))
