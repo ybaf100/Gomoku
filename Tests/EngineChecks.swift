@@ -89,6 +89,12 @@ struct EngineChecks {
         require(unlimited.black == nil && unlimited.white == nil, "unlimited reserves remain absent")
         let slow = TimeControl.slow.clockConfiguration!
         require(slow.initial == 60 && slow.increment == 10 && slow.ceiling == 90, "slow preset is 60 + 10 with 90 ceiling")
+        let blitz = TimeControl.blitz.clockConfiguration!
+        require(blitz.initial == 45 && blitz.increment == 0 && blitz.ceiling == 45,
+                "Blitz is a fixed 45-second reserve with no increment")
+        var blitzClock = MatchClock(configuration: blitz, now: 0)
+        require(blitzClock.completeMove(by: .black, at: 5) && blitzClock.black == 40,
+                "Blitz move does not refill the mover's clock")
         let record = GameRecord(playerStone: .black, difficulty: .normal, adaptiveSkill: nil,
                                 timeControl: .fast, result: .blackWin, moves: [])
         let encoder = JSONEncoder()
