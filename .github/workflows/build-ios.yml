@@ -162,6 +162,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPAD_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPad.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testThemePersistenceAndGameFlow \
+            -only-testing:GomokuUITests/AppearanceTests/testEmbeddedRapfiReturnsMove \
             -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults \
             -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation \
             -only-testing:GomokuUITests/AppearanceTests/testPlayerOptionsAndForbiddenMarkers CODE_SIGNING_ALLOWED=NO
