@@ -35,7 +35,9 @@ jobs:
         run: |
           printf 'START 15\nBEGIN\nEND\n' | timeout 10s build/rapfi/pbrain-rapfi > build/rapfi-smoke.txt
           cat build/rapfi-smoke.txt
-          grep -Eq '^[0-9]+,[0-9]+  build:
+          grep -Eq '^[0-9]+,[0-9]+$' build/rapfi-smoke.txt
+
+  build:
     runs-on: macos-latest
 
     steps:
