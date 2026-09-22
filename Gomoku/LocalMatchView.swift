@@ -395,22 +395,6 @@ struct LocalMatchView: View {
             guard !Task.isCancelled, game.completedRecord?.id == record.id else { return }
             resultReady = true
         }
-        .confirmationDialog(
-            L10n.choose("대국 메뉴", "Game menu", language),
-            isPresented: $showGameMenu,
-            titleVisibility: .visible
-        ) {
-            Button(L10n.choose("기권", "Resign", language), role: .destructive) {
-                showResignConfirmation = true
-            }
-            Button(L10n.choose("무르기", "Undo", language)) { game.undoLastMove() }
-                .disabled(!game.canUndo)
-            Button(L10n.text("backHome", language)) {
-                game.resetSession()
-                dismiss()
-            }
-            Button(L10n.choose("닫기", "Close", language), role: .cancel) {}
-        }
         .alert(
             L10n.choose("기권하시겠습니까?", "Resign this game?", language),
             isPresented: $showResignConfirmation
@@ -636,17 +620,65 @@ struct LocalMatchView: View {
                         positionText: L10n.choose("아래쪽 플레이어", "Bottom player", language))
         }
         .overlay(alignment: .topTrailing) {
-            Button { showGameMenu = true } label: {
-                Image(systemName: "line.3.horizontal")
-                    .font(.title2.bold())
-                    .foregroundStyle(theme.ink)
-                    .padding(10)
-                    .background(theme.surface.opacity(0.92), in: Circle())
+            VStack(alignment: .trailing, spacing: 8) {
+                Button { showGameMenu.toggle() } label: {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.title2.bold())
+                        .foregroundStyle(theme.ink)
+                        .padding(10)
+                        .background(theme.surface.opacity(0.96), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.choose("대국 메뉴", "Game menu", language))
+                .accessibilityIdentifier("local.menu")
+
+                if showGameMenu {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Button(role: .destructive) {
+                            showGameMenu = false
+                            showResignConfirmation = true
+                        } label: {
+                            Label(L10n.choose("기권", "Resign", language), systemImage: "flag.fill")
+                        }
+                        .accessibilityIdentifier("local.menu.resign")
+
+                        Button {
+                            showGameMenu = false
+                            game.undoLastMove()
+                        } label: {
+                            Label(L10n.choose("무르기", "Undo", language), systemImage: "arrow.uturn.backward")
+                        }
+                        .disabled(!game.canUndo)
+                        .accessibilityIdentifier("local.menu.undo")
+
+                        Button {
+                            game.resetSession()
+                            dismiss()
+                        } label: {
+                            Label(L10n.text("backHome", language), systemImage: "house")
+                        }
+                        .accessibilityIdentifier("local.menu.home")
+
+                        Divider()
+
+                        Button {
+                            showGameMenu = false
+                        } label: {
+                            Label(L10n.choose("닫기", "Close", language), systemImage: "xmark")
+                        }
+                        .accessibilityIdentifier("local.menu.close")
+                    }
+                    .buttonStyle(.plain)
+                    .frame(minWidth: 170, alignment: .leading)
+                    .padding(14)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.border))
+                    .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
+                    .transition(.scale(scale: 0.9, anchor: .topTrailing).combined(with: .opacity))
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.choose("대국 메뉴", "Game menu", language))
-            .accessibilityIdentifier("local.menu")
             .padding(8)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showGameMenu)
         }
         .overlay {
             if resultReady, game.result != nil {
