@@ -1,6 +1,6 @@
 # Gomoku
 
-Offline iOS/iPadOS Gomoku app for human-vs-AI play.
+Offline iOS/iPadOS Gomoku app for human-vs-AI and shared-device local play.
 
 ## Features
 
@@ -114,7 +114,7 @@ The wide placement button below the board doubles as the active player's time ga
 
 The engine and progression CI covers OR unlocks, score regression, repeat claims, legacy migration, history deletion, streak reset, forced colours and rematches. Simulator checks cover the red boss card, achievement claim and numbered result replay in addition to existing appearance/confirmation checks.
 
-CI also checks replay reconstruction, playback cancellation, once-only autoplay, speed persistence and all winning-line directions, including White six and excluded Black overlines. The **Gomoku-Xcode** artifact contains the actual generated project, source, assets and shared scheme used for the Release build. Unzip it and open `Gomoku-Xcode/Gomoku.xcodeproj`; XcodeGen is not needed for that download. Select your Apple Developer Team and a unique bundle identifier before signing or archiving for distribution. The included build number is 3; use a higher unused number for subsequent uploads.
+CI also checks replay reconstruction, playback cancellation, once-only autoplay, speed persistence and all winning-line directions, including White six and excluded Black overlines. The **Gomoku-Xcode** artifact contains the actual generated project, source, assets and shared scheme used for the Release build. Unzip it and open `Gomoku-Xcode/Gomoku.xcodeproj`; XcodeGen is not needed for that download. Select your Apple Developer Team and a unique bundle identifier before signing or archiving for distribution. The included build number is 4; use a higher unused number for subsequent uploads.
 
 
 ## Local two-player mode
