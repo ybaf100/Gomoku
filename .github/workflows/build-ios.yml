@@ -19,6 +19,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Verify pinned Rapfi source
+        run: |
+          test "$(git -C Vendor/rapfi rev-parse HEAD)" = "3c94c2a976f24a0dd1c5517623e9ab6fffe66bd7"
 
       - name: Install XcodeGen
         run: brew install xcodegen
@@ -51,15 +57,17 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Verify app icon is bundled
+      - name: Verify app icon and embedded Rapfi are bundled
         run: |
-          test -f build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app/Assets.car
-          test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app/Info.plist)" = AppIcon
+          APP="build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app"
+          test -f "$APP/Assets.car"
+          test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - "$APP/Info.plist")" = AppIcon
+          nm -g "$APP/Gomoku" | grep -q "_rapfi_choose_move"
 
       - name: Package generated Xcode project and sources
         run: |
           mkdir -p build/Gomoku-Xcode
-          cp -R Gomoku.xcodeproj Gomoku GomokuUITests Tests project.yml README.md build/Gomoku-Xcode/
+          cp -R Gomoku.xcodeproj Gomoku GomokuUITests Tests Vendor project.yml README.md .gitmodules THIRD_PARTY_NOTICES.md build/Gomoku-Xcode/
           git rev-parse HEAD > build/Gomoku-Xcode/SOURCE-COMMIT.txt
           cd build
           zip -qry Gomoku-Xcode.zip Gomoku-Xcode
@@ -124,6 +132,8 @@ jobs:
         device: [iPad, iPhone]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Generate Xcode project
         run: |
           brew install xcodegen
