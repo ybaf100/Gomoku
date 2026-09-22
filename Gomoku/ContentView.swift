@@ -42,6 +42,18 @@ struct ContentView: View {
             .accessibilityHidden(resultReady && game.isGameActive && game.completedRecord != nil)
         }
         .tint(theme.accent)
+#if DEBUG
+        .overlay(alignment: .topLeading) {
+            if let status = UITestSupport.rapfiSmokeStatus {
+                Text(status)
+                    .font(.system(size: 1))
+                    .foregroundStyle(.clear)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(status)
+                    .accessibilityIdentifier("rapfiSmokeStatus")
+            }
+        }
+#endif
         .onAppear {
             #if DEBUG
             UITestSupport.prepareGameIfRequested(game)
