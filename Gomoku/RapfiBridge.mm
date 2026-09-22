@@ -17,6 +17,7 @@ namespace {
 std::once_flag initFlag;
 std::mutex searchMutex;
 std::atomic_bool rapfiReady {false};
+std::atomic_bool cancelRequested {false};
 
 void initializeRapfi()
 {
@@ -78,11 +79,15 @@ bool rapfi_choose_move(
         return false;
 
     try {
+        cancelRequested.store(false, std::memory_order_release);
         initializeRapfi();
-        if (!rapfiReady.load(std::memory_order_acquire))
+        if (!rapfiReady.load(std::memory_order_acquire)
+            || cancelRequested.load(std::memory_order_acquire))
             return false;
 
         std::lock_guard<std::mutex> guard(searchMutex);
+        if (cancelRequested.load(std::memory_order_acquire))
+            return false;
 
         Board board(15);
         board.newGame(RENJU);
@@ -119,8 +124,14 @@ bool rapfi_choose_move(
         options.strengthLevel = static_cast<uint16_t>(std::clamp(strengthLevel, 0, 100));
         options.setTimeControl(std::max<int32_t>(50, timeLimitMs), 0);
 
+        if (cancelRequested.load(std::memory_order_acquire))
+            return false;
+
         Search::Engine.startThinking(board, options);
         Search::Engine.waitForIdle();
+
+        if (cancelRequested.load(std::memory_order_acquire))
+            return false;
 
         const Pos bestMove = Search::Engine.ctx.bestMove;
         if (!bestMove.isInBoard(15, 15))
@@ -137,6 +148,7 @@ bool rapfi_choose_move(
 
 void rapfi_cancel(void)
 {
+    cancelRequested.store(true, std::memory_order_release);
     if (rapfiReady.load(std::memory_order_acquire))
         Search::Engine.stopThinking();
 }
