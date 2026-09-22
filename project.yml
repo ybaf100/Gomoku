@@ -66,6 +66,8 @@ targets:
         SWIFT_OBJC_BRIDGING_HEADER: Gomoku/Gomoku-Bridging-Header.h
         CLANG_CXX_LANGUAGE_STANDARD: "c++17"
         GCC_C_LANGUAGE_STANDARD: gnu11
+        "GCC_PREPROCESSOR_DEFINITIONS[sdk=iphoneos*]": "$(inherited) USE_NEON=1"
+        "GCC_PREPROCESSOR_DEFINITIONS[sdk=iphonesimulator*]": "$(inherited) USE_SSE=1"
         HEADER_SEARCH_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/Vendor/rapfi/Rapfi"
