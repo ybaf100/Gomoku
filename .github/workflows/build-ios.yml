@@ -232,7 +232,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPAD_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-System.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testSystemFollowsDarkAndCanBeRestored CODE_SIGNING_ALLOWED=NO
-      - name: Verify compact layout on iPhone
+      - name: Verify compact layout and replay on iPhone
         if: matrix.device == 'iPhone'
         run: |
           xcrun simctl boot "$IPHONE_ID"
@@ -243,7 +243,6 @@ jobs:
             -destination "platform=iOS Simulator,id=$IPHONE_ID" \
             -parallel-testing-enabled NO -resultBundlePath build/Design-iPhone.xcresult \
             -only-testing:GomokuUITests/AppearanceTests/testCompactLayout \
-            -only-testing:GomokuUITests/AppearanceTests/testBossAchievementsAndResults \
             -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation CODE_SIGNING_ALLOWED=NO
       - name: Export simulator screenshots
         if: always()
