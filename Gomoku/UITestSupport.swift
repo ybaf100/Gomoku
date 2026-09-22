@@ -60,6 +60,7 @@ enum UITestSupport {
                 RecordedMove(stone: .white, move: Move(row: 6, column: 8))
             ]
             let occupied = Set(history.map { $0.move })
+            RapfiAI.prepareSearch()
             let move = RapfiAI.isAvailable
                 ? RapfiAI.chooseMove(history: history, stone: .black, timeLimit: 0.35, strengthLevel: 100)
                 : nil
