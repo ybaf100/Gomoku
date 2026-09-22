@@ -497,7 +497,11 @@ struct ContentView: View {
                 Text(L10n.timeSubtitle(game.timeControl, language: language))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(theme.accent)
-                Text(L10n.text(game.timeControl == .unlimited ? "noClock" : "timeRefillHelp", language))
+                Text(L10n.text(
+                    game.timeControl == .unlimited ? "noClock" :
+                    game.timeControl == .blitz ? "blitzHelp" : "timeRefillHelp",
+                    language
+                ))
                     .font(.caption).foregroundStyle(theme.secondary)
             }
         }
