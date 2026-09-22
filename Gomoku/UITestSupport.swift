@@ -3,6 +3,13 @@ import Foundation
 
 /// Simulator-only fixtures; absent from the Release IPA.
 enum UITestSupport {
+    private static let rapfiSmokeKey = "gomoku.ui.rapfiSmoke"
+
+    static var rapfiSmokeStatus: String? {
+        guard ProcessInfo.processInfo.arguments.contains("-ui-testing-rapfi-smoke") else { return nil }
+        return UserDefaults.standard.string(forKey: rapfiSmokeKey)
+    }
+
     @MainActor
     static func prepareGameIfRequested(_ game: GameViewModel) {
         let args = ProcessInfo.processInfo.arguments
@@ -37,9 +44,33 @@ enum UITestSupport {
         let defaults = UserDefaults.standard
         if args.contains("-ui-testing-reset") {
             for key in ["gomoku.language", "gomoku.appearance", "gomoku.gameRecords", "gomoku.adaptiveSkill",
-                        "gomoku.stoneSelection", "gomoku.nextAdaptiveStone", "gomoku.archive.v1", "gomoku.replay.speed"] {
+                        "gomoku.stoneSelection", "gomoku.nextAdaptiveStone", "gomoku.archive.v1", "gomoku.replay.speed",
+                        rapfiSmokeKey] {
                 defaults.removeObject(forKey: key)
             }
+        }
+        if args.contains("-ui-testing-rapfi-smoke") {
+#if RAPFI_ENABLED
+            let history = [
+                RecordedMove(stone: .black, move: Move(row: 7, column: 7)),
+                RecordedMove(stone: .white, move: Move(row: 7, column: 8)),
+                RecordedMove(stone: .black, move: Move(row: 8, column: 7)),
+                RecordedMove(stone: .white, move: Move(row: 6, column: 7)),
+                RecordedMove(stone: .black, move: Move(row: 8, column: 8)),
+                RecordedMove(stone: .white, move: Move(row: 6, column: 8))
+            ]
+            let occupied = Set(history.map { $0.move })
+            let move = RapfiAI.isAvailable
+                ? RapfiAI.chooseMove(history: history, stone: .black, timeLimit: 0.35, strengthLevel: 100)
+                : nil
+            if let move, !occupied.contains(move), (0..<15).contains(move.row), (0..<15).contains(move.column) {
+                defaults.set("ok:\(move.coordinate)", forKey: rapfiSmokeKey)
+            } else {
+                defaults.set("failed", forKey: rapfiSmokeKey)
+            }
+#else
+            defaults.set("disabled", forKey: rapfiSmokeKey)
+#endif
         }
         if args.contains("-ui-testing-boss") {
             let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
