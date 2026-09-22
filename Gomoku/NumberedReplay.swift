@@ -1,4 +1,3 @@
-import Foundation
 import SwiftUI
 
 struct NumberedReplay: View {
@@ -74,11 +73,5 @@ struct NumberedReplay: View {
             .disabled(disabled).accessibilityLabel(L10n.text(id, language)).accessibilityIdentifier("\(idPrefix).\(id)")
     }
 
-    private var speedLabel: String {
-        let value = (playback.speed * 2).rounded() / 2
-        if value == value.rounded() {
-            return "\(Int(value))×"
-        }
-        return String(format: "%.1f×", value)
-    }
+    private var speedLabel: String { playback.speedLabel }
 }
