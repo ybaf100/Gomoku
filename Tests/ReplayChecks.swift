@@ -69,7 +69,12 @@ extension EngineChecks {
         player.activate(autoplay: true, reduceMotion: false)
         require(player.ply == 9 && !player.playing, "view reappearance cannot repeat automatic playback")
         player.setSpeed(0.5)
-        require(player.interval == 1.4 && ReplayPlayback(record: record, defaults: defaults).speed == 0.5, "manual playback speed is applied and saved")
+        require(player.interval == 1.4 && player.speedLabel == "0.5×"
+                && ReplayPlayback(record: record, defaults: defaults).speed == 0.5,
+                "manual 0.5x playback speed is applied, labelled and saved")
+        player.setSpeed(1.5)
+        require(player.speedLabel == "1.5×", "fractional playback speed label preserves the half step")
+        player.setSpeed(0.5)
         player.seek(0); player.toggle(); player.seek(3)
         try? await Task.sleep(for: .milliseconds(100))
         require(player.ply == 3 && !player.playing && player.celebrationStart == nil, "scrubbing cancels pending replay and hides victory overlay")
