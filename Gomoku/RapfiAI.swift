@@ -6,6 +6,10 @@ enum RapfiAI {
         rapfi_is_available()
     }
 
+    static func prepareSearch() {
+        rapfi_prepare_search()
+    }
+
     static func chooseMove(
         history: [RecordedMove],
         stone: Stone,
