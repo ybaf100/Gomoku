@@ -16,7 +16,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ybaf100.Gomoku
         PRODUCT_NAME: Gomoku
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "3"
+        CURRENT_PROJECT_VERSION: "4"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.0"
