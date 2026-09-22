@@ -9,6 +9,8 @@ extern "C" {
 
 bool rapfi_is_available(void);
 
+void rapfi_prepare_search(void);
+
 bool rapfi_choose_move(
     const int16_t *rows,
     const int16_t *columns,
