@@ -1,0 +1,11 @@
+Third-party software
+
+Rapfi Gomoku/Renju engine
+Copyright (C) Rapfi developers
+GNU General Public License v3.0 or later
+Source: https://github.com/ybaf100/Gomoku
+Upstream: https://github.com/dhbloo/rapfi
+Pinned upstream revision: 3c94c2a976f24a0dd1c5517623e9ab6fffe66bd7
+
+The current app build uses Rapfi's built-in classical evaluator. NNUE network
+weights from rapfi-networks are not bundled.
