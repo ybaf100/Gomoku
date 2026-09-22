@@ -71,6 +71,7 @@ The Xcode project is generated from `project.yml`:
 
 ```bash
 brew install xcodegen
+git submodule update --init Vendor/rapfi
 xcodegen generate
 open Gomoku.xcodeproj
 ```
@@ -85,13 +86,13 @@ Demo records used by the UI tests are compiled only in Debug and require explici
 
 ## AI and move responsiveness
 
-The local engine checks immediate wins and blocks across the entire board, scores both contiguous and broken shapes, and uses iterative alpha-beta search for Normal, Hard and Adaptive levels. The absolute late-game ceiling remains 7.5 seconds, but opening and low-complexity positions use phase-aware caps so an early reply does not burn the full budget. Blitz uses a much shorter cap throughout the game. Tactical wins and mandatory blocks still return immediately, and iterative deepening keeps the best fully completed iteration when a deadline is reached. Hard and higher Adaptive levels search deeper when the position and budget justify it. This is a local heuristic engine, not Rapfi or a trained neural network.
+The app now uses a hybrid local AI stack. Easy, Normal, Hard and Adaptive below skill 80 use the Swift heuristic/alpha-beta engine. Very hard uses the embedded Rapfi alpha-beta engine at full strength, while Adaptive switches to Rapfi from skill 80 through 100. Both engines remain completely offline. The absolute late-game ceiling remains 7.5 seconds, opening positions use phase-aware caps, and Blitz uses a much shorter cap so the stronger engine does not reintroduce long early-game waits. If Rapfi cannot initialize or return a move, the app falls back to the Swift engine instead of ending the game.
 
 Confirming a move performs forbidden-pattern validation off the main actor. While the check runs, selection is locked and a checking status is shown. Returning to setup, restarting, or finishing cancels outstanding validation/search; request identifiers reject stale results. Forbidden-pattern evaluation examines only windows containing the relevant stone and recurses only on actual straight-four continuations. At game completion, history, achievements and adaptive skill are encoded together on the main actor into one bounded-history archive; ordinary moves do not write this archive.
 
 The `engine-check` CI job covers forbidden moves, edge threats, broken fours, forced wins, search deadlines, fast confirmation return, duplicate submissions, and cancellation across restarts. It also benchmarks the previous forbidden-check implementation. CI timing is not a guarantee for every physical device.
 
-An external engine option is [Rapfi](https://github.com/dhbloo/rapfi), a GPLv3 C++ Gomoku/Renju engine with classical/NNUE evaluation and ARM64 support. Its executable/protocol interface and evaluation weights require a native in-process adapter or a hosted service before this iOS app can use it. Rapfi is not bundled or called by this version.
+[Rapfi](https://github.com/dhbloo/rapfi) is embedded in-process through a small Objective-C++ bridge and pinned as the `Vendor/rapfi` Git submodule at `3c94c2a976f24a0dd1c5517623e9ab6fffe66bd7`. The mobile integration uses one native search thread and a 16 MiB transposition table. This build deliberately uses Rapfi's built-in classical evaluator; the separate, much larger `rapfi-networks` NNUE weight set is not bundled yet. Rapfi is GPLv3-or-later; see `THIRD_PARTY_NOTICES.md` and `Vendor/rapfi/Copying.txt` before distributing binaries.
 
 ## Refillable time reserve
 
@@ -110,11 +111,11 @@ The wide placement button below the board doubles as the active player's time ga
 - History opens the complete numbered board in a full-screen view with an explicit square board size, including iPad landscape. It shares the same replay controls; zero-move games explain why the board is empty.
 - Actual Black five/White five-or-more wins light gold borders in move order, then sweep a gold line from an endpoint. A winning move at the right endpoint sweeps right-to-left; a middle or left winning move starts at the left endpoint (top for vertical). The live board celebrates before results, and the replay celebrates at its end. Resignations, timeouts and draws do not animate a win. Reduce Motion displays the completed gold marking statically.
 - Results, adaptive score and achievement counters are stored as one versioned local archive (`gomoku.archive.v1`). Per-game IDs prevent duplicate accounting; reward rows retain their original AP amounts and claim dates. The latest 200 replays are separate from lifetime metrics. Legacy retained history/current skill are backfilled once; unavailable deleted history and unknown past peaks cannot be reconstructed. This is device-local storage, without cloud sync.
-- Very hard searches up to depth 10, uses a wider candidate set, bounded continuous-four proof search, legal threat evaluation and per-search position caches. All modes stop at a 7.5-second search budget; obvious moves finish early. Short reserves reduce the budget and leave time for committing the move. OS scheduling can add small overhead, so physical-device latency/thermal validation remains necessary.
+- Very hard is powered by embedded Rapfi at strength 100. Adaptive uses the Swift engine below 80 and Rapfi at skill 80–100. Rapfi receives the same phase-aware deadline budget as the Swift engine: all modes retain the 7.5-second absolute ceiling, obvious/early positions get shorter budgets, and Blitz stays aggressively bounded. Short reserves further reduce the budget. Physical-device latency, memory and thermal validation remain necessary.
 
 The engine and progression CI covers OR unlocks, score regression, repeat claims, legacy migration, history deletion, streak reset, forced colours and rematches. Simulator checks cover the red boss card, achievement claim and numbered result replay in addition to existing appearance/confirmation checks.
 
-CI also checks replay reconstruction, playback cancellation, once-only autoplay, speed persistence and all winning-line directions, including White six and excluded Black overlines. The **Gomoku-Xcode** artifact contains the actual generated project, source, assets and shared scheme used for the Release build. Unzip it and open `Gomoku-Xcode/Gomoku.xcodeproj`; XcodeGen is not needed for that download. Select your Apple Developer Team and a unique bundle identifier before signing or archiving for distribution. The included build number is 4; use a higher unused number for subsequent uploads.
+CI also checks replay reconstruction, playback cancellation, once-only autoplay, speed persistence and all winning-line directions, including White six and excluded Black overlines. The **Gomoku-Xcode** artifact contains the actual generated project, source, assets and shared scheme used for the Release build. Unzip it and open `Gomoku-Xcode/Gomoku.xcodeproj`; XcodeGen is not needed for that download. Select your Apple Developer Team and a unique bundle identifier before signing or archiving for distribution. The included build number is 5; use a higher unused number for subsequent uploads.
 
 
 ## Local two-player mode

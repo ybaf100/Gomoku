@@ -35,6 +35,10 @@ enum AIDifficulty: String, CaseIterable, Identifiable, Codable, Sendable {
     var id: String { rawValue }
 
     var automaticColour: Bool { self == .adaptive || self == .veryHard }
+
+    func usesRapfi(adaptiveSkill: Int) -> Bool {
+        self == .veryHard || (self == .adaptive && adaptiveSkill >= 80)
+    }
 }
 
 /// Setup preference; a live game always uses a concrete Black or White stone.

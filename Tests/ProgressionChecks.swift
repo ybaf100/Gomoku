@@ -30,6 +30,11 @@ extension EngineChecks {
         skill.observeSkill(80)
         skill.observeSkill(35)
         require(skill.bossUnlocked && skill.metrics["peakSkill"] == 80, "80 then decline preserves permanent OR unlock")
+        require(!AIDifficulty.easy.usesRapfi(adaptiveSkill: 100), "Easy never routes through Rapfi")
+        require(!AIDifficulty.hard.usesRapfi(adaptiveSkill: 100), "Hard keeps the Swift engine")
+        require(!AIDifficulty.adaptive.usesRapfi(adaptiveSkill: 79), "Adaptive 79 stays on the Swift engine")
+        require(AIDifficulty.adaptive.usesRapfi(adaptiveSkill: 80), "Adaptive 80 switches to Rapfi")
+        require(AIDifficulty.veryHard.usesRapfi(adaptiveSkill: 0), "Very Hard always routes through Rapfi")
         skill.record(sample(.veryHard), resultingSkill: 35)
         require(skill.level("firstBoss") == 1 && skill.level("bossWins") == 1, "boss victory awards both first and progressive rows")
         for _ in 0..<12 { skill.record(sample(.normal), resultingSkill: 35) }

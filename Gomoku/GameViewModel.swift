@@ -361,6 +361,7 @@ final class GameViewModel: ObservableObject {
         aiRequestID = requestID
         isThinking = true
         let snapshot = board
+        let history = moves
         let stone = aiStone
         let level = matchDifficulty
         let skill = matchDifficulty == .adaptive ? adaptiveSkill : 50
@@ -377,12 +378,54 @@ final class GameViewModel: ObservableObject {
             blitz: matchTimeControl == .blitz
         )
 
+#if RAPFI_ENABLED
+        let useRapfi = level.usesRapfi(adaptiveSkill: skill)
+        if useRapfi {
+            RapfiAI.prepareSearch()
+        }
+#endif
+
         // Cancellation stops abandoned searches; a serial deadline-based search
         // returns its best completed iteration instead of an arbitrary timeout fallback.
         aiTask?.cancel()
         aiTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let engine = GomokuAI(difficulty: level, adaptiveSkill: skill)
-            let move = engine.chooseMove(board: snapshot, stone: stone, timeLimit: budget)
+            let fallback = GomokuAI(difficulty: level, adaptiveSkill: skill)
+            let move: Move
+
+#if RAPFI_ENABLED
+            guard !Task.isCancelled else { return }
+            if useRapfi,
+               let rapfiMove = RapfiAI.chooseMove(
+                   history: history,
+                   stone: stone,
+                   timeLimit: budget,
+                   strengthLevel: level == .veryHard ? 100 : skill
+               ) {
+                move = rapfiMove
+            } else {
+                guard !Task.isCancelled else { return }
+                guard let fallbackMove = fallback.chooseMove(
+                    board: snapshot,
+                    stone: stone,
+                    timeLimit: budget
+                ) else {
+                    await self?.completeAIMove(requestID, move: nil, stone: stone)
+                    return
+                }
+                move = fallbackMove
+            }
+#else
+            guard let fallbackMove = fallback.chooseMove(
+                board: snapshot,
+                stone: stone,
+                timeLimit: budget
+            ) else {
+                await self?.completeAIMove(requestID, move: nil, stone: stone)
+                return
+            }
+            move = fallbackMove
+#endif
+
             guard !Task.isCancelled else { return }
             await self?.completeAIMove(requestID, move: move, stone: stone)
         }
@@ -403,6 +446,9 @@ final class GameViewModel: ObservableObject {
     private func invalidateAI() {
         invalidateForbiddenMoves()
         aiRequestID = nil
+#if RAPFI_ENABLED
+        RapfiAI.cancel()
+#endif
         aiTask?.cancel()
         aiTask = nil
         validationID = nil
