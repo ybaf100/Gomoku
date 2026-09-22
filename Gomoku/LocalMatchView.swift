@@ -358,9 +358,9 @@ final class LocalMatchViewModel: ObservableObject {
 struct LocalMatchView: View {
     let language: AppLanguage
     @StateObject private var game = LocalMatchViewModel()
-    @Environment(.dismiss) private var dismiss
-    @Environment(.colorScheme) private var scheme
-    @Environment(.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showGameMenu = false
     @State private var showResignConfirmation = false
     @State private var resultReady = false
@@ -573,7 +573,7 @@ struct LocalMatchView: View {
                 Toggle(L10n.text("unlimited", language), isOn: unlimited)
                     .labelsHidden()
                     .accessibilityLabel(title + " " + L10n.text("unlimited", language))
-                    .accessibilityIdentifier("local.(prefix).unlimited")
+                    .accessibilityIdentifier("local.\(prefix).unlimited")
             }
             if !unlimited.wrappedValue {
                 Stepper(value: seconds, in: 15...7200, step: 15) {
@@ -583,16 +583,16 @@ struct LocalMatchView: View {
                         Text(formatTime(seconds.wrappedValue)).monospacedDigit().bold()
                     }
                 }
-                .accessibilityIdentifier("local.(prefix).initial")
+                .accessibilityIdentifier("local.\(prefix).initial")
                 Stepper(value: increment, in: 0...60, step: 1) {
                     HStack {
                         Text(L10n.choose("착수 후 추가", "Increment", language))
                         Spacer()
-                        Text("+(Int(increment.wrappedValue))(L10n.choose("초", "s", language))")
+                        Text("+\(Int(increment.wrappedValue))\(L10n.choose("초", "s", language))")
                             .monospacedDigit().bold()
                     }
                 }
-                .accessibilityIdentifier("local.(prefix).increment")
+                .accessibilityIdentifier("local.\(prefix).increment")
             }
         }
         .padding(14)
@@ -723,9 +723,9 @@ struct LocalMatchView: View {
     }
 
     private func statsText(_ stats: LocalPlayerStats) -> String {
-        let rate = stats.wins + stats.losses == 0 ? "—" : "(Int((stats.winRate * 100).rounded()))%"
-        return L10n.choose("(stats.wins)승 (stats.losses)패 · 승률 (rate)",
-                           "(stats.wins)W (stats.losses)L · (rate)", language)
+        let rate = stats.wins + stats.losses == 0 ? "—" : "\(Int((stats.winRate * 100).rounded()))%"
+        return L10n.choose("\(stats.wins)승 \(stats.losses)패 · 승률 \(rate)",
+                           "\(stats.wins)W \(stats.losses)L · \(rate)", language)
     }
 
     private func presetName(_ preset: LocalTimePreset) -> String {
