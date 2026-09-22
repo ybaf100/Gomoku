@@ -76,11 +76,25 @@ targets:
           - "$(SRCROOT)/Vendor/rapfi/Rapfi/external/simde/include"
         TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "오목"
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
+
+  GomokuTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: GomokuTests
+    dependencies:
+      - target: Gomoku
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ybaf100.Gomoku.Tests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"
 
   GomokuUITests:
     type: bundle.ui-testing
@@ -103,4 +117,5 @@ schemes:
         Gomoku: all
     test:
       targets:
+        - GomokuTests
         - GomokuUITests

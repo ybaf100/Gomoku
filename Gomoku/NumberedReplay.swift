@@ -73,7 +73,5 @@ struct NumberedReplay: View {
             .disabled(disabled).accessibilityLabel(L10n.text(id, language)).accessibilityIdentifier("\(idPrefix).\(id)")
     }
 
-    private var speedLabel: String {
-        playback.speed < 1 ? "0.5×" : "\(Int(playback.speed.rounded()))×"
-    }
+    private var speedLabel: String { playback.speedLabel }
 }

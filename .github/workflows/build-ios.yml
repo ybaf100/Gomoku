@@ -12,7 +12,31 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  rapfi-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Build pinned Rapfi CLI
+        run: |
+          cmake -S Vendor/rapfi/Rapfi -B build/rapfi \
+            -DNO_COMMAND_MODULES=ON \
+            -DNO_MULTI_THREADING=ON \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/rapfi --parallel 2
+      - name: Verify Rapfi returns a board coordinate
+        run: |
+          printf 'START 15\nBEGIN\nEND\n' | timeout 10s build/rapfi/pbrain-rapfi > build/rapfi-smoke.txt
+          cat build/rapfi-smoke.txt
+          grep -Eq '^[0-9]+,[0-9]+$' build/rapfi-smoke.txt
+
   build:
     runs-on: macos-latest
 
@@ -63,13 +87,14 @@ jobs:
           BRIDGE_OBJ="build/DerivedData/Build/Intermediates.noindex/Gomoku.build/Release-iphoneos/Gomoku.build/Objects-normal/arm64/RapfiBridge.o"
           test -f "$APP/Assets.car"
           test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - "$APP/Info.plist")" = AppIcon
+          test "$(plutil -extract CFBundleDisplayName raw -o - "$APP/Info.plist")" = "오목"
           test -f "$BRIDGE_OBJ"
           nm "$BRIDGE_OBJ" | grep -q "_rapfi_choose_move"
 
       - name: Package generated Xcode project and sources
         run: |
           mkdir -p build/Gomoku-Xcode
-          cp -R Gomoku.xcodeproj Gomoku GomokuUITests Tests Vendor project.yml README.md .gitmodules THIRD_PARTY_NOTICES.md build/Gomoku-Xcode/
+          cp -R Gomoku.xcodeproj Gomoku GomokuTests GomokuUITests Tests Vendor project.yml README.md .gitmodules THIRD_PARTY_NOTICES.md build/Gomoku-Xcode/
           git rev-parse HEAD > build/Gomoku-Xcode/SOURCE-COMMIT.txt
           cd build
           zip -qry Gomoku-Xcode.zip Gomoku-Xcode
@@ -124,6 +149,40 @@ jobs:
           except subprocess.TimeoutExpired:
               print('Before: forbidden check exceeded 20 seconds on this CI runner')
           PYTHON
+
+  rapfi-ios-integration:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Select iOS simulator
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '-j']))['devices']
+          ios = [d for runtime, entries in devices.items() if 'iOS' in runtime for d in entries]
+          device = next((d for d in ios if 'iPad Pro' in d['name'] and '13-inch' in d['name']), next(d for d in ios if 'iPad' in d['name']))
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write('RAPFI_SIM_ID=' + device['udid'] + '\n')
+          PY
+      - name: Run embedded Rapfi integration test
+        run: |
+          xcrun simctl boot "$RAPFI_SIM_ID"
+          xcrun simctl bootstatus "$RAPFI_SIM_ID" -b
+          xcodebuild test \
+            -project Gomoku.xcodeproj \
+            -scheme Gomoku \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$RAPFI_SIM_ID" \
+            -parallel-testing-enabled NO \
+            -only-testing:GomokuTests/RapfiIntegrationTests/testEmbeddedRapfiReturnsLegalMove \
+            CODE_SIGNING_ALLOWED=NO
 
   design-check:
     runs-on: macos-latest
