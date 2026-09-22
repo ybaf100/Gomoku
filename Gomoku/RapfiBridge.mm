@@ -60,6 +60,11 @@ bool rapfi_is_available(void)
     }
 }
 
+void rapfi_prepare_search(void)
+{
+    cancelRequested.store(false, std::memory_order_release);
+}
+
 bool rapfi_choose_move(
     const int16_t *rows,
     const int16_t *columns,
@@ -79,7 +84,6 @@ bool rapfi_choose_move(
         return false;
 
     try {
-        cancelRequested.store(false, std::memory_order_release);
         initializeRapfi();
         if (!rapfiReady.load(std::memory_order_acquire)
             || cancelRequested.load(std::memory_order_acquire))
