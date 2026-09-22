@@ -40,9 +40,15 @@ extension EngineChecks {
         require(skill.currentStreak == 0 && skill.metrics["bestStreak"] == 13 && skill.equippedTitle == "streak.2", "draw clears only current streak; historical stage and title remain")
         let restored = try! JSONDecoder().decode(AchievementProgress.self, from: JSONEncoder().encode(skill))
         require(restored.bossUnlocked && restored.level("streak") == 5, "permanent unlock and all stages round-trip")
-        require(GomokuAI.thinkingBudget(remaining: nil, increment: nil) == 7.5, "unlimited game has 7.5-second AI cap")
+        require(GomokuAI.thinkingBudget(remaining: nil, increment: nil) == 7.5, "unlimited game keeps the 7.5-second late-game ceiling")
         require(GomokuAI.thinkingBudget(remaining: 1, increment: 5) < 0.7, "AI reserves time to commit before timeout")
         require(GomokuAI.thinkingBudget(remaining: 10, increment: 5) <= 5, "low reserve shortens search below refill amount")
+        require(GomokuAI.thinkingBudget(remaining: nil, increment: nil, moveCount: 1) <= 0.9,
+                "second-move opening search no longer spends the full 7.5-second budget")
+        require(GomokuAI.thinkingBudget(remaining: 45, increment: 0, moveCount: 10, blitz: true) <= 0.9,
+                "Blitz uses a short search budget even with plenty of clock remaining")
+        require(GomokuAI.thinkingBudget(remaining: nil, increment: nil, moveCount: 40) == 7.5,
+                "complex late positions can still use the full strength budget")
         let boss = GomokuAI(difficulty: .veryHard)
         let tactical = board([(4,4),(5,9)], [(7,5),(7,6),(7,7)])
         let move = boss.chooseMove(board: tactical, stone: .white, timeLimit: 0.8)

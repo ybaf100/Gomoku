@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showHistory = false
     @State private var showSettings = false
     @State private var showAchievements = false
+    @State private var showLocalMatch = false
     @State private var focusUnlocks = false
     @State private var pendingAction: GameAction?
     @State private var showLeaveConfirmation = false
@@ -84,6 +85,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showAchievements) {
             NavigationStack { AchievementsView(game: game, language: language, focusUnlocks: focusUnlocks) }
+        }
+        .fullScreenCover(isPresented: $showLocalMatch) {
+            LocalMatchView(language: language)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .confirmationDialog(
             L10n.text("leaveGameTitle", language),
@@ -311,12 +316,12 @@ struct ContentView: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         SectionCaption(number: "03", title: L10n.text("timeControl", language))
-                        let columns = typeSize.isAccessibilitySize ? 1 : 3
+                        let columns = typeSize.isAccessibilitySize ? 1 : 4
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
                             ForEach(TimeControl.allCases) { control in
                                 SelectionTile(selected: game.timeControl == control, action: { game.timeControl = control }) {
                                     VStack(spacing: 6) {
-                                        Text(control == .fast ? "0:30" : control == .slow ? "1:00" : "∞")
+                                        Text(timeControlClockLabel(control))
                                             .font(.system(.title3, design: .rounded, weight: .semibold))
                                             .monospacedDigit()
                                         Text(L10n.timeControl(control, language: language))
@@ -331,7 +336,7 @@ struct ContentView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(theme.accent)
                             .accessibilityIdentifier("clockRule")
-                        Text(L10n.text(game.timeControl == .unlimited ? "noClock" : "timeRefillHelp", language))
+                        Text(L10n.text(game.timeControl == .unlimited ? "noClock" : game.timeControl == .blitz ? "blitzHelp" : "timeRefillHelp", language))
                             .font(.caption)
                             .foregroundStyle(theme.secondary)
                     }
@@ -353,6 +358,29 @@ struct ContentView: View {
                         .multilineTextAlignment(.center)
                 }
             }
+
+            Button { showLocalMatch = true } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.2.fill")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(L10n.choose("혼자 두기", "Local Play", language))
+                            .font(.subheadline.bold())
+                        Text(L10n.choose("한 iPad에서 위·아래로 마주 보고 플레이 · 세로 모드 전용",
+                                         "Face-to-face on one iPad · Portrait only", language))
+                            .font(.caption)
+                            .foregroundStyle(theme.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.caption.bold())
+                }
+                .foregroundStyle(theme.ink)
+                .padding(.horizontal, 12)
+                .frame(minHeight: 58)
+                .background(theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(theme.border, lineWidth: 1) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("openLocalMatch")
 
             Button { showSettings = true } label: {
                 HStack(spacing: 10) {
@@ -388,6 +416,15 @@ struct ContentView: View {
             }
         }
         .accessibilityIdentifier("stone.\(stone.rawValue)")
+    }
+
+    private func timeControlClockLabel(_ control: TimeControl) -> String {
+        switch control {
+        case .blitz: return "0:45"
+        case .fast: return "0:30"
+        case .slow: return "1:00"
+        case .unlimited: return "∞"
+        }
     }
 
     private func difficultySymbol(_ level: AIDifficulty) -> String {
@@ -460,7 +497,11 @@ struct ContentView: View {
                 Text(L10n.timeSubtitle(game.timeControl, language: language))
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(theme.accent)
-                Text(L10n.text(game.timeControl == .unlimited ? "noClock" : "timeRefillHelp", language))
+                Text(L10n.text(
+                    game.timeControl == .unlimited ? "noClock" :
+                    game.timeControl == .blitz ? "blitzHelp" : "timeRefillHelp",
+                    language
+                ))
                     .font(.caption).foregroundStyle(theme.secondary)
             }
         }
@@ -613,7 +654,11 @@ struct ContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else if let clock = game.timeControl.clockConfiguration {
                 HStack {
-                    Label("+\(Int(clock.increment))s / " + L10n.text("perMove", language), systemImage: "arrow.clockwise")
+                    if clock.increment > 0 {
+                        Label("+\(Int(clock.increment))s / " + L10n.text("perMove", language), systemImage: "arrow.clockwise")
+                    } else {
+                        Label(L10n.choose("시간 추가 없음", "No increment", language), systemImage: "bolt.fill")
+                    }
                     Spacer()
                     Text(L10n.text("timeCap", language) + " \(Int(clock.ceiling))s")
                 }

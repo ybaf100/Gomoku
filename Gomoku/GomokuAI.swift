@@ -3,12 +3,50 @@ import Foundation
 /// Offline tactical search. No network, process, or model download is required.
 struct GomokuAI: Sendable {
     static let maximumThinkingTime: TimeInterval = 7.5
-    static func thinkingBudget(remaining: Double?, increment: Double?) -> TimeInterval {
-        guard let remaining else { return maximumThinkingTime }
-        let safe = max(0.01, remaining - 0.3)
-        // Retain reserve in fast games where the increment is less than the cap.
-        let sustainable = remaining < 15 ? max(0.01, min(increment ?? safe, remaining / 3)) : maximumThinkingTime
-        return min(maximumThinkingTime, min(safe, sustainable))
+
+    /// Returns a deadline budget, not a forced think time. Tactical wins and
+    /// blocks still return immediately. Early positions get a much smaller cap
+    /// because spending the full deep-search budget on the opening has very low
+    /// value and hurts the perceived responsiveness.
+    static func thinkingBudget(
+        remaining: Double?,
+        increment: Double?,
+        moveCount: Int? = nil,
+        blitz: Bool = false
+    ) -> TimeInterval {
+        let clockBudget: TimeInterval
+        if let remaining {
+            let safe = max(0.01, remaining - 0.3)
+            // Preserve enough reserve to actually commit the selected move.
+            let sustainable = remaining < 15
+                ? max(0.01, min(increment ?? safe, remaining / 3))
+                : maximumThinkingTime
+            clockBudget = min(maximumThinkingTime, min(safe, sustainable))
+        } else {
+            clockBudget = maximumThinkingTime
+        }
+
+        guard let moveCount else { return clockBudget }
+
+        let phaseCap: TimeInterval
+        if blitz {
+            switch moveCount {
+            case 0...2: phaseCap = 0.35
+            case 3...6: phaseCap = 0.60
+            case 7...12: phaseCap = 0.90
+            default: phaseCap = 1.25
+            }
+        } else {
+            switch moveCount {
+            case 0...2: phaseCap = 0.90
+            case 3...6: phaseCap = 1.60
+            case 7...12: phaseCap = 2.80
+            case 13...20: phaseCap = 4.50
+            default: phaseCap = maximumThinkingTime
+            }
+        }
+
+        return min(clockBudget, phaseCap)
     }
     let difficulty: AIDifficulty
     let adaptiveSkill: Int

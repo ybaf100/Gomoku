@@ -90,6 +90,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 }
 
 enum TimeControl: String, CaseIterable, Identifiable, Codable, Sendable {
+    case blitz
     case fast
     case slow
     case unlimited
@@ -98,6 +99,7 @@ enum TimeControl: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var clockConfiguration: ClockConfiguration? {
         switch self {
+        case .blitz: return ClockConfiguration(initial: 45, increment: 0, ceiling: 45)
         case .fast: return ClockConfiguration(initial: 30, increment: 5, ceiling: 45)
         case .slow: return ClockConfiguration(initial: 60, increment: 10, ceiling: 90)
         case .unlimited: return nil
