@@ -12,9 +12,20 @@ final class AppearanceTests: XCTestCase {
     }
 
     private func tap(_ id: String) {
-        let button = app.buttons[id].firstMatch
+        var button = app.buttons[id].firstMatch
         XCTAssertTrue(button.waitForExistence(timeout: 10), "Missing button: \(id)")
-        if !button.isHittable { app.swipeUp() }
+        if !button.isHittable {
+            let ready = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == true AND hittable == true"),
+                object: button
+            )
+            if XCTWaiter.wait(for: [ready], timeout: 3) != .completed {
+                app.swipeUp()
+                button = app.buttons[id].firstMatch
+                XCTAssertTrue(button.waitForExistence(timeout: 10), "Missing button after scroll: \(id)")
+            }
+        }
+        XCTAssertTrue(button.isHittable, "Button is not hittable: \(id)")
         button.tap()
     }
 
