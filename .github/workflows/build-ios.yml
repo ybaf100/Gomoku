@@ -26,6 +26,7 @@ jobs:
     outputs:
       run_heavy_ui: ${{ steps.scope.outputs.run_heavy_ui }}
       reason: ${{ steps.scope.outputs.reason }}
+      validation_run_id: ${{ steps.scope.outputs.validation_run_id }}
     steps:
       - name: Decide whether heavy UI regression is required
         id: scope
@@ -38,6 +39,7 @@ jobs:
           set -euo pipefail
 
           run_heavy_ui=true
+          validation_run_id=""
           reason="${EVENT_NAME} requires full regression"
 
           if [[ "$EVENT_NAME" == "push" ]]; then
@@ -63,14 +65,17 @@ jobs:
                 -f status=success \
                 -f per_page=20)"; then
 
-                if jq -e --arg head "$pr_head" \
-                  '.workflow_runs | any(
+                validated_run="$(jq -c --arg head "$pr_head" \
+                  '[.workflow_runs[] | select(
                     .head_sha == $head and
                     .event == "pull_request" and
                     .conclusion == "success" and
                     .path == ".github/workflows/build-ios.yml"
-                  )' <<< "$successful_runs" >/dev/null; then
+                  )] | sort_by(.run_number) | last // empty' <<< "$successful_runs")"
+
+                if [[ -n "$validated_run" ]]; then
                   run_heavy_ui=false
+                  validation_run_id="$(jq -r '.id' <<< "$validated_run")"
                   reason="merge commit for PR #$pr_number already passed full regression at $pr_head"
                 else
                   reason="merge commit PR #$pr_number has no matching successful full regression"
@@ -84,6 +89,7 @@ jobs:
           fi
 
           echo "run_heavy_ui=$run_heavy_ui" >> "$GITHUB_OUTPUT"
+          echo "validation_run_id=$validation_run_id" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
           echo "Heavy UI: $run_heavy_ui ($reason)"
 
@@ -222,6 +228,7 @@ jobs:
           PYTHON
 
   rapfi-ios-integration:
+    needs: validation_scope
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -232,6 +239,22 @@ jobs:
         run: |
           command -v xcodegen >/dev/null || brew install xcodegen
           xcodegen generate
+      - name: Reuse PR test bundle for a validated merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATION_RUN_ID: ${{ needs.validation_scope.outputs.validation_run_id }}
+        run: |
+          mkdir -p build/RapfiDerivedData/Build/Products
+          if [[ -n "$VALIDATION_RUN_ID" ]]; then
+            if gh run download "$VALIDATION_RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --name Gomoku-Rapfi-Test-Build \
+              --dir build/RapfiDerivedData/Build/Products; then
+              echo "Reused Rapfi test bundle from workflow run $VALIDATION_RUN_ID"
+            else
+              echo "PR test bundle unavailable; rebuilding from source"
+            fi
+          fi
       - name: Select iOS simulator
         run: |
           python3 - <<'PY'
@@ -242,27 +265,58 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as f:
               f.write('RAPFI_SIM_ID=' + device['udid'] + '\n')
           PY
-      - name: Run embedded Rapfi integration test
+      - name: Build embedded Rapfi test bundle when needed
         run: |
-          xcrun simctl boot "$RAPFI_SIM_ID"
-          xcrun simctl bootstatus "$RAPFI_SIM_ID" -b
-          xcodebuild test \
+          if find build/RapfiDerivedData/Build/Products -name '*.xctestrun' -print -quit | grep -q .; then
+            echo "Using prebuilt test bundle"
+            exit 0
+          fi
+
+          xcrun simctl boot "$RAPFI_SIM_ID" || true
+          xcodebuild build-for-testing \
             -project Gomoku.xcodeproj \
             -scheme Gomoku \
             -configuration Debug \
+            -derivedDataPath build/RapfiDerivedData \
             -destination "platform=iOS Simulator,id=$RAPFI_SIM_ID" \
             -parallel-testing-enabled NO \
-            -only-testing:GomokuTests/RapfiIntegrationTests/testEmbeddedRapfiReturnsLegalMove \
             COMPILER_INDEX_STORE_ENABLE=NO \
             ONLY_ACTIVE_ARCH=YES \
             CODE_SIGNING_ALLOWED=NO
+      - name: Run embedded Rapfi integration test
+        run: |
+          xcrun simctl boot "$RAPFI_SIM_ID" || true
+          xcrun simctl bootstatus "$RAPFI_SIM_ID" -b
+          XCTESTRUN="$(find build/RapfiDerivedData/Build/Products -name '*.xctestrun' -print -quit)"
+          test -n "$XCTESTRUN"
+          xcodebuild test-without-building \
+            -xctestrun "$XCTESTRUN" \
+            -destination "platform=iOS Simulator,id=$RAPFI_SIM_ID" \
+            -parallel-testing-enabled NO \
+            -only-testing:GomokuTests/RapfiIntegrationTests/testEmbeddedRapfiReturnsLegalMove
+      - name: Upload reusable Rapfi test bundle
+        if: needs.validation_scope.outputs.run_heavy_ui == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gomoku-Rapfi-Test-Build
+          path: build/RapfiDerivedData/Build/Products
+          if-no-files-found: error
+          retention-days: 7
 
-  design-check-iphone:
-    name: design-check (iPhone)
+  design-check-iphone-shard:
+    name: design-check (iPhone-${{ matrix.shard }})
     needs: validation_scope
     if: needs.validation_scope.outputs.run_heavy_ui == 'true'
     runs-on: macos-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: layout
+            tests: GomokuUITests/AppearanceTests/testCompactLayout,GomokuUITests/AppearanceTests/testLocalSetupAndMenu
+          - shard: replay
+            tests: GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation
     steps:
       - uses: actions/checkout@v4
         with:
@@ -281,18 +335,26 @@ jobs:
           with open(os.environ['GITHUB_ENV'], 'a') as f:
               f.write('SIM_ID=' + phone['udid'] + '\n')
           PY
-      - name: Verify compact layout and replay on iPhone
+      - name: Verify iPhone ${{ matrix.shard }} regression
+        env:
+          TESTS: ${{ matrix.tests }}
         run: |
           xcrun simctl boot "$SIM_ID"
           xcrun simctl bootstatus "$SIM_ID" -b
           xcrun simctl ui "$SIM_ID" appearance light
           xcrun simctl status_bar "$SIM_ID" override --time '9:41' --batteryState charged --batteryLevel 100
+
+          IFS=',' read -r -a selected_tests <<< "$TESTS"
+          only_testing=()
+          for test_name in "${selected_tests[@]}"; do
+            only_testing+=("-only-testing:$test_name")
+          done
+
           xcodebuild test -project Gomoku.xcodeproj -scheme Gomoku -configuration Debug \
             -destination "platform=iOS Simulator,id=$SIM_ID" \
-            -parallel-testing-enabled NO -resultBundlePath build/Design-iPhone.xcresult \
-            -only-testing:GomokuUITests/AppearanceTests/testCompactLayout \
-            -only-testing:GomokuUITests/AppearanceTests/testSixStoneReplayAndResignation \
-            -only-testing:GomokuUITests/AppearanceTests/testLocalSetupAndMenu \
+            -parallel-testing-enabled NO \
+            -resultBundlePath "build/Design-iPhone-${{ matrix.shard }}.xcresult" \
+            "${only_testing[@]}" \
             COMPILER_INDEX_STORE_ENABLE=NO ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO
       - name: Export simulator screenshots
         if: always()
@@ -307,10 +369,28 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Gomoku-Design-Previews-iPhone
+          name: Gomoku-Design-Previews-iPhone-${{ matrix.shard }}
           path: build/DesignPreviews
           if-no-files-found: warn
           retention-days: 14
+
+  design-check-iphone:
+    name: design-check (iPhone)
+    runs-on: ubuntu-latest
+    needs: [validation_scope, design-check-iphone-shard]
+    if: always()
+    steps:
+      - name: Report iPhone validation status
+        env:
+          RUN_HEAVY_UI: ${{ needs.validation_scope.outputs.run_heavy_ui }}
+          SHARD_RESULT: ${{ needs.design-check-iphone-shard.result }}
+          REASON: ${{ needs.validation_scope.outputs.reason }}
+        run: |
+          if [[ "$RUN_HEAVY_UI" != "true" ]]; then
+            echo "iPhone UI regression skipped: $REASON"
+            exit 0
+          fi
+          test "$SHARD_RESULT" = "success"
 
   design-check-ipad-shard:
     name: design-check (iPad-${{ matrix.shard }})
