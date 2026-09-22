@@ -74,6 +74,10 @@ struct NumberedReplay: View {
     }
 
     private var speedLabel: String {
-        playback.speed < 1 ? "0.5×" : "\(Int(playback.speed.rounded()))×"
+        let value = (playback.speed * 2).rounded() / 2
+        if value == value.rounded() {
+            return "\(Int(value))×"
+        }
+        return String(format: "%.1f×", value)
     }
 }
