@@ -379,7 +379,7 @@ final class GameViewModel: ObservableObject {
         )
 
 #if RAPFI_ENABLED
-        let useRapfi = level == .veryHard || (level == .adaptive && skill >= 80)
+        let useRapfi = level.usesRapfi(adaptiveSkill: skill)
         if useRapfi {
             RapfiAI.prepareSearch()
         }
