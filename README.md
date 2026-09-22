@@ -7,10 +7,12 @@ Offline iOS/iPadOS Gomoku app for human-vs-AI play.
 - 15×15 board
 - User-selected photographic app icon, packaged as an opaque 1024px universal iOS asset
 - Human vs local AI
+- Portrait-only iPad local two-player mode: players sit at the top and bottom, choose a custom fixed clock, and swap Black/White after every rematch
 - Easy/Normal/Hard allow Black, White or Random
 - Adaptive always alternates Black/White, starting Black; Very hard always draws a random colour
 - Ordinary-mode stone preference and next Adaptive colour persist independently; non-Adaptive games do not advance the sequence
 - Easy / Normal / Hard / Very hard / Adaptive AI (starts at 50/100)
+- Blitz: fixed 45 seconds per side, no increment; AI uses a short deadline budget
 - Fast reserve: start 30 seconds, +5 seconds per completed move, capped at 45 seconds
 - Slow reserve: start 60 seconds, +10 seconds per completed move, capped at 90 seconds
 - Unlimited clock
@@ -83,7 +85,7 @@ Demo records used by the UI tests are compiled only in Debug and require explici
 
 ## AI and move responsiveness
 
-The local engine checks immediate wins and blocks across the entire board, scores both contiguous and broken shapes, and uses iterative alpha-beta search for Normal, Hard and Adaptive levels. The search targets a maximum 7.5-second budget and keeps the best fully completed iteration. Hard and higher Adaptive levels search deeper when the budget allows. This is a local heuristic engine, not Rapfi or a trained neural network.
+The local engine checks immediate wins and blocks across the entire board, scores both contiguous and broken shapes, and uses iterative alpha-beta search for Normal, Hard and Adaptive levels. The absolute late-game ceiling remains 7.5 seconds, but opening and low-complexity positions use phase-aware caps so an early reply does not burn the full budget. Blitz uses a much shorter cap throughout the game. Tactical wins and mandatory blocks still return immediately, and iterative deepening keeps the best fully completed iteration when a deadline is reached. Hard and higher Adaptive levels search deeper when the position and budget justify it. This is a local heuristic engine, not Rapfi or a trained neural network.
 
 Confirming a move performs forbidden-pattern validation off the main actor. While the check runs, selection is locked and a checking status is shown. Returning to setup, restarting, or finishing cancels outstanding validation/search; request identifiers reject stale results. Forbidden-pattern evaluation examines only windows containing the relevant stone and recurses only on actual straight-four continuations. At game completion, history, achievements and adaptive skill are encoded together on the main actor into one bounded-history archive; ordinary moves do not write this archive.
 
@@ -113,3 +115,10 @@ The wide placement button below the board doubles as the active player's time ga
 The engine and progression CI covers OR unlocks, score regression, repeat claims, legacy migration, history deletion, streak reset, forced colours and rematches. Simulator checks cover the red boss card, achievement claim and numbered result replay in addition to existing appearance/confirmation checks.
 
 CI also checks replay reconstruction, playback cancellation, once-only autoplay, speed persistence and all winning-line directions, including White six and excluded Black overlines. The **Gomoku-Xcode** artifact contains the actual generated project, source, assets and shared scheme used for the Release build. Unzip it and open `Gomoku-Xcode/Gomoku.xcodeproj`; XcodeGen is not needed for that download. Select your Apple Developer Team and a unique bundle identifier before signing or archiving for distribution. The included build number is 3; use a higher unused number for subsequent uploads.
+
+
+## Local two-player mode
+
+Local Play is intended for one iPad shared by two people sitting opposite each other. It is deliberately portrait-only: landscape shows a rotate-device message instead of the game board. The bottom and top players have their own move-confirmation controls, with the top controls rotated 180 degrees. The first game starts with Black at the bottom and White at the top; selecting **Rematch** after a finished game swaps the players' colours for the next game. **Exit** leaves local play.
+
+Local Play uses the same 15×15 Renju legality and win rules as AI play. Its clock can be unlimited or set from 15 seconds through 30 minutes in 15-second steps, with no increment. Local games are isolated from Adaptive rating, achievements, AP and AI win/loss statistics.
