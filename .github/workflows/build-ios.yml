@@ -57,12 +57,14 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Verify app icon and embedded Rapfi are bundled
+      - name: Verify app icon and Rapfi bridge build
         run: |
           APP="build/DerivedData/Build/Products/Release-iphoneos/Gomoku.app"
+          BRIDGE_OBJ="build/DerivedData/Build/Intermediates.noindex/Gomoku.build/Release-iphoneos/Gomoku.build/Objects-normal/arm64/RapfiBridge.o"
           test -f "$APP/Assets.car"
           test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - "$APP/Info.plist")" = AppIcon
-          nm -g "$APP/Gomoku" | grep -q "_rapfi_choose_move"
+          test -f "$BRIDGE_OBJ"
+          nm "$BRIDGE_OBJ" | grep -q "_rapfi_choose_move"
 
       - name: Package generated Xcode project and sources
         run: |
