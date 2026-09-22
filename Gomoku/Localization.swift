@@ -29,6 +29,7 @@ enum L10n {
 
     static func timeControl(_ control: TimeControl, language: AppLanguage) -> String {
         switch control {
+        case .blitz: return text("blitz", language)
         case .fast: return text("fast", language)
         case .slow: return text("slow", language)
         case .unlimited: return text("unlimited", language)
@@ -41,6 +42,11 @@ enum L10n {
     }
 
     static func clockDescription(_ clock: ClockConfiguration, language: AppLanguage) -> String {
+        if clock.increment == 0 {
+            return language == .korean
+                ? "총 \(Int(clock.initial))초 · 시간 추가 없음"
+                : "Total \(Int(clock.initial))s · No increment"
+        }
         if language == .korean {
             return "시작 \(Int(clock.initial))초 · 매 수 +\(Int(clock.increment))초 · 최대 \(Int(clock.ceiling))초"
         }
@@ -50,6 +56,7 @@ enum L10n {
     static func recordClock(_ record: GameRecord, language: AppLanguage) -> String {
         if let clock = record.clockConfiguration { return clockDescription(clock, language: language) }
         switch record.timeControl {
+        case .blitz: return text("blitzLegacy", language)
         case .fast: return text("threeMinutes", language)
         case .slow: return text("tenMinutes", language)
         case .unlimited: return text("noClock", language)
@@ -185,6 +192,9 @@ enum L10n {
         "adaptiveDescription": "처음 50/100(보통)에서 시작하고, 매 경기 결과와 경기 길이에 따라 다음 판 AI 수준이 세밀하게 조정됩니다.",
         "adaptiveCurrent": "현재 지능형 수준",
         "timeControl": "시간 설정",
+        "blitz": "블리츠",
+        "blitzLegacy": "총 45초 · 시간 추가 없음",
+        "blitzHelp": "각자 45초를 사용하며 착수 후 시간 추가가 없습니다. AI도 짧은 탐색 예산으로 빠르게 응수합니다.",
         "fast": "빠른 경기",
         "slow": "느린 경기",
         "unlimited": "무제한",
@@ -300,6 +310,9 @@ enum L10n {
         "adaptiveDescription": "Starts at 50/100 (Normal) and adjusts the next game's AI strength in small steps based on each result and game length.",
         "adaptiveCurrent": "Current adaptive level",
         "timeControl": "Time control",
+        "blitz": "Blitz",
+        "blitzLegacy": "45s total · No increment",
+        "blitzHelp": "Each side gets 45 seconds with no increment. The AI also uses a short search budget for fast replies.",
         "fast": "Fast",
         "slow": "Slow",
         "unlimited": "Unlimited",
