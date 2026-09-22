@@ -87,6 +87,7 @@ jobs:
           BRIDGE_OBJ="build/DerivedData/Build/Intermediates.noindex/Gomoku.build/Release-iphoneos/Gomoku.build/Objects-normal/arm64/RapfiBridge.o"
           test -f "$APP/Assets.car"
           test "$(plutil -extract CFBundleIcons.CFBundlePrimaryIcon.CFBundleIconName raw -o - "$APP/Info.plist")" = AppIcon
+          test "$(plutil -extract CFBundleDisplayName raw -o - "$APP/Info.plist")" = "오목"
           test -f "$BRIDGE_OBJ"
           nm "$BRIDGE_OBJ" | grep -q "_rapfi_choose_move"
 
