@@ -244,6 +244,24 @@ final class AppearanceTests: XCTestCase {
         screenshot("29-resignation-without-gold-line")
     }
 
+    func testLocalSetupAndMenu() {
+        tap("openLocalMatch")
+        tap("local.black.top")
+        XCTAssertTrue(app.buttons["local.black.top"].isSelected)
+        XCTAssertTrue(app.segmentedControls["local.timePreset"].waitForExistence(timeout: 10))
+        tap("local.start")
+        tap("local.menu")
+        XCTAssertTrue(app.buttons["기권"].waitForExistence(timeout: 5))
+        let undo = app.buttons["무르기"]
+        XCTAssertTrue(undo.exists)
+        XCTAssertFalse(undo.isEnabled, "Undo must be disabled before the first committed move")
+        XCTAssertTrue(app.buttons["닫기"].exists)
+        screenshot("31-local-menu")
+        app.buttons["닫기"].tap()
+        XCTAssertTrue(app.staticTexts["local.stats.bottom"].exists)
+        XCTAssertTrue(app.staticTexts["local.stats.top"].exists)
+    }
+
     func testPlayerOptionsAndForbiddenMarkers() {
         XCUIDevice.shared.orientation = .landscapeLeft
         tap("stone.random")

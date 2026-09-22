@@ -17,50 +17,54 @@ final class LocalMatchViewModel: ObservableObject {
     @Published private(set) var forbiddenMoves: [Move: ForbiddenReason] = [:]
     @Published private(set) var isValidatingMove = false
     @Published private(set) var completedRecord: GameRecord?
-    @Published var isGameActive = false
-    @Published var unlimited = false
-    @Published var customSeconds: Double = 300
+    @Published private(set) var sessionScore = LocalSessionScore()
     @Published private(set) var bottomStone: Stone = .black
+    @Published var selectedBottomStone: Stone = .black
+    @Published var isGameActive = false
+    @Published var timePreset: LocalTimePreset = .fast
+    @Published var bottomCustomUnlimited = false
+    @Published var topCustomUnlimited = false
+    @Published var bottomCustomSeconds: Double = 180
+    @Published var topCustomSeconds: Double = 300
+    @Published var bottomCustomIncrement: Double = 2
+    @Published var topCustomIncrement: Double = 0
 
     var topStone: Stone { bottomStone.opponent }
-
-    private var matchClock: MatchClock?
-    private var clockTimer: Timer?
-    private var moves: [RecordedMove] = []
-    private var validationTask: Task<Void, Never>?
-    private var validationID: UUID?
-    private var forbiddenTask: Task<Void, Never>?
-    private var forbiddenRequestID: UUID?
-
+    var canUndo: Bool { core.canUndo && !isValidatingMove }
     var showsForbiddenMoves: Bool {
         isGameActive && result == nil && currentTurn == .black
     }
 
-    var clockConfiguration: ClockConfiguration? {
-        guard !unlimited else { return nil }
-        let seconds = min(1800, max(15, customSeconds))
-        return ClockConfiguration(initial: seconds, increment: 0, ceiling: seconds)
+    private var core = LocalMatchCore()
+    private var colourAssignment = LocalColourAssignment(selectedBottomStone: .black)
+    private var activeSetup = LocalClockSetup.symmetric(.unlimited)
+    private var clockTimer: Timer?
+    private var validationTask: Task<Void, Never>?
+    private var validationID: UUID?
+    private var forbiddenTask: Task<Void, Never>?
+    private var forbiddenRequestID: UUID?
+    private var didRecordResult = false
+    private let clockNow: () -> TimeInterval
+
+    init(clockNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+        self.clockNow = clockNow
     }
 
     func startGame(swapSides: Bool = false) {
-        stop()
+        stopTasks()
         if swapSides {
-            bottomStone = bottomStone.opponent
+            colourAssignment.rematch()
+        } else {
+            colourAssignment = LocalColourAssignment(selectedBottomStone: selectedBottomStone)
         }
-        board = Array(
-            repeating: Array(repeating: Stone.empty, count: RenjuRules.boardSize),
-            count: RenjuRules.boardSize
-        )
-        currentTurn = .black
-        result = nil
-        lastMove = nil
-        selectedMove = nil
-        notice = nil
-        moves = []
+        bottomStone = colourAssignment.bottomStone
+        if !swapSides { activeSetup = configuredClockSetup }
+        core.start(setup: activeSetup, bottomStone: bottomStone, now: clockNow())
         completedRecord = nil
-        matchClock = MatchClock(configuration: clockConfiguration, now: now())
-        publishClock()
+        notice = nil
+        didRecordResult = false
         isGameActive = true
+        publishCore()
         startClock()
         refreshForbiddenMoves()
     }
@@ -69,16 +73,16 @@ final class LocalMatchViewModel: ObservableObject {
         startGame(swapSides: true)
     }
 
+    func resetSession() {
+        stopTasks()
+        sessionScore.reset()
+        isGameActive = false
+        completedRecord = nil
+        notice = nil
+    }
+
     func stop() {
-        clockTimer?.invalidate()
-        clockTimer = nil
-        validationID = nil
-        validationTask?.cancel()
-        validationTask = nil
-        forbiddenRequestID = nil
-        forbiddenTask?.cancel()
-        forbiddenTask = nil
-        isValidatingMove = false
+        stopTasks()
     }
 
     func selectMove(_ move: Move) {
@@ -88,16 +92,19 @@ final class LocalMatchViewModel: ObservableObject {
             return
         }
         if let reason = forbiddenMoves[move], showsForbiddenMoves {
+            core.selectedMove = nil
             selectedMove = nil
             notice = .forbidden(reason)
             return
         }
+        core.selectedMove = move
         selectedMove = move
         notice = nil
     }
 
     func cancelSelection() {
         guard !isValidatingMove else { return }
+        core.selectedMove = nil
         selectedMove = nil
         notice = nil
     }
@@ -109,6 +116,7 @@ final class LocalMatchViewModel: ObservableObject {
             return
         }
         guard board[move.row][move.column] == .empty else {
+            core.selectedMove = nil
             selectedMove = nil
             notice = .occupied
             return
@@ -147,7 +155,6 @@ final class LocalMatchViewModel: ObservableObject {
               result == nil,
               currentTurn == stone,
               board == snapshot else { return }
-
         validationID = nil
         validationTask = nil
         isValidatingMove = false
@@ -162,30 +169,34 @@ final class LocalMatchViewModel: ObservableObject {
     }
 
     private func applyLegalMove(_ move: Move, stone: Stone) {
-        guard result == nil, currentTurn == stone, board[move.row][move.column] == .empty else { return }
-        guard matchClock?.completeMove(by: stone, at: now()) != false else {
-            tickClock()
+        guard core.commit(move, stone: stone, at: clockNow()) else {
+            publishCore()
+            if core.result != nil { finishFromCore() }
             return
         }
-
-        publishClock()
-        invalidateForbiddenMoves()
-        board[move.row][move.column] = stone
-        moves.append(RecordedMove(stone: stone, move: move))
-        lastMove = move
-        selectedMove = nil
         notice = nil
-
-        if RenjuRules.isWinningMove(board: board, move: move, stone: stone) {
-            finish(stone == .black ? .blackWin : .whiteWin)
-            return
+        publishCore()
+        if core.result != nil {
+            finishFromCore()
+        } else {
+            refreshForbiddenMoves()
         }
-        if board.allSatisfy({ $0.allSatisfy { $0 != .empty } }) {
-            finish(.draw)
-            return
-        }
+    }
 
-        currentTurn = stone.opponent
+    func resignCurrentPlayer() {
+        guard core.resignCurrentPlayer() != nil else { return }
+        publishCore()
+        finishFromCore()
+    }
+
+    func undoLastMove() {
+        guard result == nil, !isValidatingMove else { return }
+        invalidateValidationAndForbidden()
+        guard core.undo(at: clockNow()) else { return }
+        completedRecord = nil
+        notice = nil
+        publishCore()
+        startClock()
         refreshForbiddenMoves()
     }
 
@@ -210,8 +221,10 @@ final class LocalMatchViewModel: ObservableObject {
         guard forbiddenRequestID == requestID, showsForbiddenMoves, board == snapshot else { return }
         forbiddenRequestID = nil
         forbiddenTask = nil
+        core.forbiddenMoves = markers
         forbiddenMoves = markers
         if !isValidatingMove, let selectedMove, let reason = markers[selectedMove] {
+            core.selectedMove = nil
             self.selectedMove = nil
             notice = .forbidden(reason)
         }
@@ -221,12 +234,22 @@ final class LocalMatchViewModel: ObservableObject {
         forbiddenRequestID = nil
         forbiddenTask?.cancel()
         forbiddenTask = nil
+        core.forbiddenMoves = [:]
         forbiddenMoves = [:]
+    }
+
+    private func invalidateValidationAndForbidden() {
+        validationID = nil
+        validationTask?.cancel()
+        validationTask = nil
+        isValidatingMove = false
+        invalidateForbiddenMoves()
     }
 
     private func startClock() {
         clockTimer?.invalidate()
-        guard clockConfiguration != nil else { return }
+        let hasClock = core.clock.black != nil || core.clock.white != nil
+        guard hasClock, result == nil else { return }
         clockTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tickClock() }
         }
@@ -234,32 +257,66 @@ final class LocalMatchViewModel: ObservableObject {
 
     private func tickClock() {
         guard isGameActive, result == nil else { return }
-        let expired = matchClock?.settle(at: now())
-        publishClock()
-        if let expired {
-            finish(expired == .black ? .blackTimeout : .whiteTimeout)
-        }
+        _ = core.settleClock(at: clockNow())
+        publishCore()
+        if core.result != nil { finishFromCore() }
     }
 
-    private func publishClock() {
-        blackTime = matchClock?.black
-        whiteTime = matchClock?.white
-    }
-
-    private func finish(_ newResult: GameResult) {
-        guard result == nil else { return }
-        result = newResult
-        selectedMove = nil
-        stop()
+    private func finishFromCore() {
+        guard let result = core.result, !didRecordResult else { return }
+        didRecordResult = true
+        stopTasks()
+        publishCore()
+        sessionScore.record(result, bottomStone: bottomStone)
         completedRecord = GameRecord(
-            playerStone: .black,
+            playerStone: bottomStone,
             difficulty: .normal,
             adaptiveSkill: nil,
-            timeControl: .unlimited,
-            result: newResult,
-            moves: moves,
-            clockConfiguration: matchClock?.configuration
+            timeControl: recordTimeControl,
+            result: result,
+            moves: core.moves,
+            clockConfiguration: nil
         )
+    }
+
+    private func stopTasks() {
+        clockTimer?.invalidate()
+        clockTimer = nil
+        invalidateValidationAndForbidden()
+    }
+
+    private func publishCore() {
+        board = core.board
+        currentTurn = core.currentTurn
+        result = core.result
+        lastMove = core.lastMove
+        selectedMove = core.selectedMove
+        forbiddenMoves = core.forbiddenMoves
+        blackTime = core.clock.black
+        whiteTime = core.clock.white
+    }
+
+    private var configuredClockSetup: LocalClockSetup {
+        if let setup = timePreset.setup { return setup }
+        return LocalClockSetup(
+            bottom: bottomCustomUnlimited
+                ? .unlimited
+                : .init(initial: min(7200, max(15, bottomCustomSeconds)),
+                        increment: min(60, max(0, bottomCustomIncrement))),
+            top: topCustomUnlimited
+                ? .unlimited
+                : .init(initial: min(7200, max(15, topCustomSeconds)),
+                        increment: min(60, max(0, topCustomIncrement)))
+        )
+    }
+
+    private var recordTimeControl: TimeControl {
+        switch timePreset {
+        case .blitz: return .blitz
+        case .fast: return .fast
+        case .slow: return .slow
+        case .unlimited, .custom: return .unlimited
+        }
     }
 
     func formattedTime(for stone: Stone) -> String {
@@ -270,14 +327,18 @@ final class LocalMatchViewModel: ObservableObject {
     }
 
     func timeFraction(for stone: Stone) -> Double {
-        guard let ceiling = matchClock?.configuration?.ceiling, ceiling > 0,
+        guard let maximum = core.clock.displayMaximum(for: stone), maximum > 0,
               let remaining = stone == .black ? blackTime : whiteTime else { return 1 }
-        return min(1, max(0, remaining / ceiling))
+        return min(1, max(0, remaining / maximum))
     }
 
     func isTimeLow(for stone: Stone) -> Bool {
         guard let remaining = stone == .black ? blackTime : whiteTime else { return false }
         return remaining <= 10
+    }
+
+    func stats(forBottomPlayer bottom: Bool) -> LocalPlayerStats {
+        bottom ? sessionScore.bottom : sessionScore.top
     }
 
     func resultTitle(language: AppLanguage) -> String {
@@ -292,17 +353,18 @@ final class LocalMatchViewModel: ObservableObject {
         case .whiteResigned: return L10n.choose("백 기권 · 흑 승리", "White resigned · Black wins", language)
         }
     }
-
-    private func now() -> TimeInterval {
-        ProcessInfo.processInfo.systemUptime
-    }
 }
 
 struct LocalMatchView: View {
     let language: AppLanguage
     @StateObject private var game = LocalMatchViewModel()
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var scheme
+    @Environment(.dismiss) private var dismiss
+    @Environment(.colorScheme) private var scheme
+    @Environment(.accessibilityReduceMotion) private var reduceMotion
+    @State private var showGameMenu = false
+    @State private var showResignConfirmation = false
+    @State private var resultReady = false
+    @State private var celebrationStart: Date?
 
     private var theme: GomokuTheme { GomokuTheme(scheme) }
 
@@ -319,6 +381,47 @@ struct LocalMatchView: View {
         .background { GameBackdrop() }
         .foregroundStyle(theme.ink)
         .onDisappear { game.stop() }
+        .task(id: game.completedRecord?.id) {
+            resultReady = false
+            celebrationStart = nil
+            guard let record = game.completedRecord else { return }
+            let pattern = VictoryPattern(record: record)
+            if !pattern.isEmpty {
+                celebrationStart = Date()
+                if !reduceMotion {
+                    do { try await Task.sleep(for: .seconds(pattern.duration + 0.2)) } catch { return }
+                }
+            }
+            guard !Task.isCancelled, game.completedRecord?.id == record.id else { return }
+            resultReady = true
+        }
+        .confirmationDialog(
+            L10n.choose("대국 메뉴", "Game menu", language),
+            isPresented: $showGameMenu,
+            titleVisibility: .visible
+        ) {
+            Button(L10n.choose("기권", "Resign", language), role: .destructive) {
+                showResignConfirmation = true
+            }
+            Button(L10n.choose("무르기", "Undo", language)) { game.undoLastMove() }
+                .disabled(!game.canUndo)
+            Button(L10n.text("backHome", language)) {
+                game.resetSession()
+                dismiss()
+            }
+            Button(L10n.choose("닫기", "Close", language), role: .cancel) {}
+        }
+        .alert(
+            L10n.choose("기권하시겠습니까?", "Resign this game?", language),
+            isPresented: $showResignConfirmation
+        ) {
+            Button(L10n.choose("기권", "Resign", language), role: .destructive) {
+                game.resignCurrentPlayer()
+            }
+            Button(L10n.text("cancel", language), role: .cancel) {}
+        } message: {
+            Text(L10n.choose("현재 차례의 플레이어가 패배합니다.", "The player whose turn it is will lose.", language))
+        }
     }
 
     private var landscapeUnsupported: some View {
@@ -336,9 +439,12 @@ struct LocalMatchView: View {
                 .foregroundStyle(theme.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 30)
-            Button(L10n.text("backHome", language)) { dismiss() }
-                .buttonStyle(GomokuButtonStyle(primary: false))
-                .frame(maxWidth: 320)
+            Button(L10n.text("backHome", language)) {
+                game.resetSession()
+                dismiss()
+            }
+            .buttonStyle(GomokuButtonStyle(primary: false))
+            .frame(maxWidth: 320)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -349,7 +455,10 @@ struct LocalMatchView: View {
         ScrollView {
             VStack(spacing: 18) {
                 HStack {
-                    QuietIconButton(title: L10n.text("backHome", language), symbol: "xmark") { dismiss() }
+                    QuietIconButton(title: L10n.text("backHome", language), symbol: "xmark") {
+                        game.resetSession()
+                        dismiss()
+                    }
                     Spacer()
                     Text(L10n.choose("혼자 두기", "Local Play", language))
                         .font(.system(.title2, design: .rounded, weight: .bold))
@@ -362,45 +471,52 @@ struct LocalMatchView: View {
                         Label(L10n.choose("한 iPad에서 마주 보고 두기", "Face-to-face on one iPad", language),
                               systemImage: "person.2.fill")
                             .font(.headline)
-                        Text(L10n.choose(
-                            "첫 판은 아래쪽이 흑, 위쪽이 백입니다. 흑이 먼저 두며, 다시 대결할 때마다 두 플레이어의 흑백 위치가 서로 바뀝니다.",
-                            "The first game starts with Black at the bottom and White at the top. Black moves first, and the players swap colours after every rematch.",
-                            language
-                        ))
-                        .font(.subheadline)
-                        .foregroundStyle(theme.secondary)
+
+                        Text(L10n.choose("첫 대국의 흑 플레이어를 선택하세요. 다시 대결하면 위·아래 플레이어의 색이 서로 바뀝니다.",
+                                         "Choose who plays Black in the first game. A rematch swaps the top and bottom players' colours.",
+                                         language))
+                            .font(.subheadline)
+                            .foregroundStyle(theme.secondary)
+
+                        HStack(spacing: 12) {
+                            colourChoice(bottomIsBlack: true)
+                            colourChoice(bottomIsBlack: false)
+                        }
 
                         Divider()
 
-                        Toggle(isOn: $game.unlimited) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(L10n.text("unlimited", language)).font(.subheadline.bold())
-                                Text(L10n.text("noClock", language)).font(.caption).foregroundStyle(theme.secondary)
+                        Text(L10n.choose("시간 설정", "Time control", language))
+                            .font(.subheadline.bold())
+                        Picker(L10n.choose("시간 설정", "Time control", language), selection: $game.timePreset) {
+                            ForEach(LocalTimePreset.allCases) { preset in
+                                Text(presetName(preset)).tag(preset)
                             }
                         }
-                        .tint(theme.accent)
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("local.timePreset")
 
-                        if !game.unlimited {
-                            Stepper(value: $game.customSeconds, in: 15...1800, step: 15) {
-                                HStack {
-                                    Text(L10n.choose("각자 제한 시간", "Time per player", language))
-                                    Spacer()
-                                    Text(formatCustomTime(game.customSeconds))
-                                        .font(.system(.body, design: .rounded, weight: .bold))
-                                        .monospacedDigit()
-                                        .foregroundStyle(theme.accent)
-                                }
-                            }
-                            Text(L10n.choose("15초 단위로 15초부터 30분까지 설정할 수 있으며, 착수 후 시간 추가는 없습니다.",
-                                             "Choose 15 seconds to 30 minutes in 15-second steps. No time is added after a move.",
-                                             language))
+                        if game.timePreset == .custom {
+                            customClockEditor(
+                                title: L10n.choose("아래쪽 플레이어", "Bottom player", language),
+                                unlimited: $game.bottomCustomUnlimited,
+                                seconds: $game.bottomCustomSeconds,
+                                increment: $game.bottomCustomIncrement,
+                                prefix: "bottom"
+                            )
+                            customClockEditor(
+                                title: L10n.choose("위쪽 플레이어", "Top player", language),
+                                unlimited: $game.topCustomUnlimited,
+                                seconds: $game.topCustomSeconds,
+                                increment: $game.topCustomIncrement,
+                                prefix: "top"
+                            )
+                        } else {
+                            Text(presetDescription(game.timePreset))
                                 .font(.caption)
                                 .foregroundStyle(theme.secondary)
                         }
 
-                        Button {
-                            game.startGame()
-                        } label: {
+                        Button { game.startGame() } label: {
                             HStack {
                                 Spacer()
                                 Text(L10n.choose("혼자 두기 시작", "Start Local Play", language))
@@ -409,20 +525,85 @@ struct LocalMatchView: View {
                             }
                         }
                         .buttonStyle(GomokuButtonStyle())
+                        .accessibilityIdentifier("local.start")
                     }
                 }
             }
-            .frame(maxWidth: 620)
+            .frame(maxWidth: 680)
             .padding(22)
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
     }
 
+    private func colourChoice(bottomIsBlack: Bool) -> some View {
+        let selected = game.selectedBottomStone == (bottomIsBlack ? .black : .white)
+        return Button {
+            game.selectedBottomStone = bottomIsBlack ? .black : .white
+        } label: {
+            VStack(spacing: 9) {
+                StoneDisc(stone: .black, size: 30)
+                Text(bottomIsBlack
+                     ? L10n.choose("아래쪽이 흑", "Bottom is Black", language)
+                     : L10n.choose("위쪽이 흑", "Top is Black", language))
+                    .font(.subheadline.bold())
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(14)
+            .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(bottomIsBlack ? "local.black.bottom" : "local.black.top")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func customClockEditor(
+        title: String,
+        unlimited: Binding<Bool>,
+        seconds: Binding<Double>,
+        increment: Binding<Double>,
+        prefix: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(title).font(.subheadline.bold())
+                Spacer()
+                Toggle(L10n.text("unlimited", language), isOn: unlimited)
+                    .labelsHidden()
+                    .accessibilityLabel(title + " " + L10n.text("unlimited", language))
+                    .accessibilityIdentifier("local.(prefix).unlimited")
+            }
+            if !unlimited.wrappedValue {
+                Stepper(value: seconds, in: 15...7200, step: 15) {
+                    HStack {
+                        Text(L10n.choose("시작 시간", "Starting time", language))
+                        Spacer()
+                        Text(formatTime(seconds.wrappedValue)).monospacedDigit().bold()
+                    }
+                }
+                .accessibilityIdentifier("local.(prefix).initial")
+                Stepper(value: increment, in: 0...60, step: 1) {
+                    HStack {
+                        Text(L10n.choose("착수 후 추가", "Increment", language))
+                        Spacer()
+                        Text("+(Int(increment.wrappedValue))(L10n.choose("초", "s", language))")
+                            .monospacedDigit().bold()
+                    }
+                }
+                .accessibilityIdentifier("local.(prefix).increment")
+            }
+        }
+        .padding(14)
+        .background(theme.inset.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+    }
+
     private func matchScreen(size: CGSize) -> some View {
         let boardSide = min(size.width - 28, size.height - 330)
         return VStack(spacing: 10) {
-            playerPanel(stone: game.topStone, positionText: L10n.choose("위쪽 플레이어", "Top player", language))
+            playerPanel(stone: game.topStone, bottomPlayer: false,
+                        positionText: L10n.choose("위쪽 플레이어", "Top player", language))
                 .rotationEffect(.degrees(180))
 
             ZStack {
@@ -440,44 +621,51 @@ struct LocalMatchView: View {
                 )
                 .frame(width: max(280, boardSide), height: max(280, boardSide))
 
-                if let record = game.completedRecord {
+                if let record = game.completedRecord, let start = celebrationStart {
                     let pattern = VictoryPattern(record: record)
                     if !pattern.isEmpty {
-                        WinningCelebration(pattern: pattern, startedAt: Date.distantPast, language: language)
+                        WinningCelebration(pattern: pattern, startedAt: start, language: language)
                             .allowsHitTesting(false)
+                            .accessibilityIdentifier("local.liveVictory")
                     }
                 }
             }
             .frame(maxWidth: .infinity)
 
-            playerPanel(stone: game.bottomStone, positionText: L10n.choose("아래쪽 플레이어", "Bottom player", language))
+            playerPanel(stone: game.bottomStone, bottomPlayer: true,
+                        positionText: L10n.choose("아래쪽 플레이어", "Bottom player", language))
         }
         .overlay(alignment: .topTrailing) {
-            Button {
-                game.stop()
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(theme.secondary)
-                    .padding(8)
+            Button { showGameMenu = true } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.title2.bold())
+                    .foregroundStyle(theme.ink)
+                    .padding(10)
+                    .background(theme.surface.opacity(0.92), in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(L10n.text("backHome", language))
+            .accessibilityLabel(L10n.choose("대국 메뉴", "Game menu", language))
+            .accessibilityIdentifier("local.menu")
+            .padding(8)
         }
         .overlay {
-            if game.result != nil {
+            if resultReady, game.result != nil {
                 VStack(spacing: 12) {
                     Text(game.resultTitle(language: language))
                         .font(.system(.title2, design: .rounded, weight: .bold))
                     HStack(spacing: 10) {
-                        Button(L10n.choose("다시 대결", "Rematch", language)) { game.rematch() }
-                            .buttonStyle(GomokuButtonStyle())
+                        Button(L10n.choose("다시 대결", "Rematch", language)) {
+                            resultReady = false
+                            game.rematch()
+                        }
+                        .buttonStyle(GomokuButtonStyle())
+                        .accessibilityIdentifier("local.rematch")
                         Button(L10n.choose("나가기", "Exit", language)) {
-                            game.stop()
+                            game.resetSession()
                             dismiss()
                         }
                         .buttonStyle(GomokuButtonStyle(primary: false))
+                        .accessibilityIdentifier("local.exit")
                     }
                 }
                 .padding(18)
@@ -490,16 +678,20 @@ struct LocalMatchView: View {
         .padding(.vertical, 8)
     }
 
-    private func playerPanel(stone: Stone, positionText: String) -> some View {
+    private func playerPanel(stone: Stone, bottomPlayer: Bool, positionText: String) -> some View {
         let active = game.currentTurn == stone && game.result == nil
         let canPlace = active && game.selectedMove != nil && !game.isValidatingMove
+        let stats = game.stats(forBottomPlayer: bottomPlayer)
         return SurfaceCard {
             HStack(spacing: 12) {
                 StoneDisc(stone: stone, size: 30)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(positionText).font(.caption).foregroundStyle(theme.secondary)
-                    Text(L10n.stone(stone, language: language))
-                        .font(.headline)
+                    Text(L10n.stone(stone, language: language)).font(.headline)
+                    Text(statsText(stats))
+                        .font(.caption2)
+                        .foregroundStyle(theme.secondary)
+                        .accessibilityIdentifier(bottomPlayer ? "local.stats.bottom" : "local.stats.top")
                 }
                 Spacer()
                 if let selected = game.selectedMove, active {
@@ -518,7 +710,7 @@ struct LocalMatchView: View {
                          ? L10n.text("validatingMove", language)
                          : active ? L10n.text("place", language)
                          : L10n.choose("대기", "Wait", language))
-                        .frame(minWidth: 74)
+                        .frame(minWidth: 70)
                 }
                 .buttonStyle(GomokuButtonStyle(primary: active))
                 .disabled(!canPlace)
@@ -530,7 +722,33 @@ struct LocalMatchView: View {
         }
     }
 
-    private func formatCustomTime(_ seconds: Double) -> String {
+    private func statsText(_ stats: LocalPlayerStats) -> String {
+        let rate = stats.wins + stats.losses == 0 ? "—" : "(Int((stats.winRate * 100).rounded()))%"
+        return L10n.choose("(stats.wins)승 (stats.losses)패 · 승률 (rate)",
+                           "(stats.wins)W (stats.losses)L · (rate)", language)
+    }
+
+    private func presetName(_ preset: LocalTimePreset) -> String {
+        switch preset {
+        case .unlimited: return L10n.text("unlimited", language)
+        case .blitz: return L10n.choose("Blitz", "Blitz", language)
+        case .fast: return L10n.choose("Fast", "Fast", language)
+        case .slow: return L10n.choose("Slow", "Slow", language)
+        case .custom: return L10n.choose("직접", "Custom", language)
+        }
+    }
+
+    private func presetDescription(_ preset: LocalTimePreset) -> String {
+        switch preset {
+        case .unlimited: return L10n.text("noClock", language)
+        case .blitz: return L10n.choose("각 플레이어 0:45 · 증분 없음", "0:45 per player · no increment", language)
+        case .fast: return L10n.choose("각 플레이어 0:30 + 5초 · 최대 0:45", "0:30 + 5s per player · 0:45 cap", language)
+        case .slow: return L10n.choose("각 플레이어 1:00 + 10초 · 최대 1:30", "1:00 + 10s per player · 1:30 cap", language)
+        case .custom: return ""
+        }
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
     }

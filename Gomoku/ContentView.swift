@@ -486,6 +486,19 @@ struct ContentView: View {
                 }
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if game.showsSwiftFallback {
+                Text("Swift")
+                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                    .foregroundStyle(theme.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(theme.surface.opacity(0.88), in: Capsule())
+                    .padding(.trailing, 8)
+                    .accessibilityLabel(L10n.choose("Swift AI 대체 엔진 사용 중", "Using Swift AI fallback", language))
+                    .accessibilityIdentifier("swiftFallbackIndicator")
+            }
+        }
 
     }
 
