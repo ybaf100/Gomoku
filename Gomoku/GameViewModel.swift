@@ -367,7 +367,15 @@ final class GameViewModel: ObservableObject {
         var clock = matchClock
         _ = clock?.settle(at: clockNow())
         let remaining = stone == .black ? clock?.black : clock?.white
-        let budget = GomokuAI.thinkingBudget(remaining: remaining, increment: clock?.configuration?.increment)
+        let moveCount = snapshot.reduce(0) { partial, row in
+            partial + row.reduce(0) { $0 + ($1 == .empty ? 0 : 1) }
+        }
+        let budget = GomokuAI.thinkingBudget(
+            remaining: remaining,
+            increment: clock?.configuration?.increment,
+            moveCount: moveCount,
+            blitz: matchTimeControl == .blitz
+        )
 
         // Cancellation stops abandoned searches; a serial deadline-based search
         // returns its best completed iteration instead of an arbitrary timeout fallback.
