@@ -378,6 +378,13 @@ final class GameViewModel: ObservableObject {
             blitz: matchTimeControl == .blitz
         )
 
+#if RAPFI_ENABLED
+        let useRapfi = level == .veryHard || (level == .adaptive && skill >= 80)
+        if useRapfi {
+            RapfiAI.prepareSearch()
+        }
+#endif
+
         // Cancellation stops abandoned searches; a serial deadline-based search
         // returns its best completed iteration instead of an arbitrary timeout fallback.
         aiTask?.cancel()
@@ -386,7 +393,7 @@ final class GameViewModel: ObservableObject {
             let move: Move
 
 #if RAPFI_ENABLED
-            let useRapfi = level == .veryHard || (level == .adaptive && skill >= 80)
+            guard !Task.isCancelled else { return }
             if useRapfi,
                let rapfiMove = RapfiAI.chooseMove(
                    history: history,
