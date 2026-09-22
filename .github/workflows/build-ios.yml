@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: gomoku-ios-ci
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-latest
