@@ -46,8 +46,8 @@ struct ContentView: View {
         .overlay(alignment: .topLeading) {
             if let status = UITestSupport.rapfiSmokeStatus {
                 Text(status)
-                    .font(.system(size: 1))
-                    .foregroundStyle(.clear)
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .padding(2)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(status)
                     .accessibilityIdentifier("rapfiSmokeStatus")
