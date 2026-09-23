@@ -16,10 +16,11 @@ struct BoardView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let side = min(geometry.size.width, geometry.size.height)
-            let margin = max(22.0, side * 0.067)
-            let boardSide = max(1, side - margin * 2)
-            let spacing = boardSide / Double(RenjuRules.boardSize - 1)
+            let boardGeometry = BoardGeometry(size: geometry.size)
+            let side = boardGeometry.side
+            let margin = boardGeometry.margin
+            let boardSide = boardGeometry.gridSide
+            let spacing = boardGeometry.spacing
             let theme = GomokuTheme(scheme)
 
             Canvas { context, _ in
@@ -29,7 +30,7 @@ struct BoardView: View {
                 context.stroke(frame, with: .color(theme.boardEdge), lineWidth: 2)
                 var grid = Path()
                 for index in 0..<RenjuRules.boardSize {
-                    let offset = margin + Double(index) * spacing
+                    let offset = margin + CGFloat(index) * spacing
                     grid.move(to: CGPoint(x: margin, y: offset))
                     grid.addLine(to: CGPoint(x: margin + boardSide, y: offset))
                     grid.move(to: CGPoint(x: offset, y: margin))
@@ -46,8 +47,7 @@ struct BoardView: View {
                 context.stroke(grid, with: .color(theme.grid), lineWidth: max(0.65, side / 820))
 
                 for star in [(3, 3), (3, 11), (7, 7), (11, 3), (11, 11)] {
-                    let point = CGPoint(x: margin + Double(star.1) * spacing,
-                                        y: margin + Double(star.0) * spacing)
+                    let point = boardGeometry.center(Move(row: star.0, column: star.1))
                     let diameter = max(4, spacing * 0.17)
                     context.fill(Path(ellipseIn: CGRect(x: point.x - diameter / 2, y: point.y - diameter / 2,
                                                        width: diameter, height: diameter)),
@@ -58,11 +58,11 @@ struct BoardView: View {
                     for column in 0..<RenjuRules.boardSize {
                         let stone = board[row][column]
                         guard stone != .empty else { continue }
-                        drawStone(stone, row: row, column: column, spacing: spacing, margin: margin,
+                        drawStone(stone, at: boardGeometry.center(Move(row: row, column: column)), spacing: spacing,
                                   opacity: 1, context: &context)
                         let point = Move(row: row, column: column)
                         if let number = moveNumbers[point] {
-                            let center = CGPoint(x: margin + Double(column) * spacing, y: margin + Double(row) * spacing)
+                            let center = boardGeometry.center(point)
                             context.draw(Text("\(number)")
                                 .font(.system(size: spacing * (number >= 100 ? 0.32 : 0.43), weight: .bold, design: .rounded))
                                 .foregroundColor(stone == .black ? .white : Color(hex: 0x14251F)), at: center)
@@ -73,8 +73,7 @@ struct BoardView: View {
                             }
                         } else if lastMove == point && !winningLine.contains(point) {
                             let diameter = max(3, spacing * 0.18)
-                            let center = CGPoint(x: margin + Double(column) * spacing,
-                                                 y: margin + Double(row) * spacing)
+                            let center = boardGeometry.center(point)
                             context.fill(
                                 Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                                                        width: diameter, height: diameter)),
@@ -85,10 +84,8 @@ struct BoardView: View {
                 }
 
                 if let selectedMove, board[selectedMove.row][selectedMove.column] == .empty {
-                    drawStone(previewStone, row: selectedMove.row, column: selectedMove.column,
-                              spacing: spacing, margin: margin, opacity: 0.55, context: &context)
-                    let center = CGPoint(x: margin + Double(selectedMove.column) * spacing,
-                                         y: margin + Double(selectedMove.row) * spacing)
+                    let center = boardGeometry.center(selectedMove)
+                    drawStone(previewStone, at: center, spacing: spacing, opacity: 0.55, context: &context)
                     let diameter = spacing * 0.98
                     let ring = Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                                                      width: diameter, height: diameter))
@@ -96,8 +93,7 @@ struct BoardView: View {
                 }
 
                 for (move, reason) in forbiddenMoves where board[move.row][move.column] == .empty {
-                    let center = CGPoint(x: margin + Double(move.column) * spacing,
-                                         y: margin + Double(move.row) * spacing)
+                    let center = boardGeometry.center(move)
                     let diameter = spacing * 0.86
                     let ring = Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                                                      width: diameter, height: diameter))
@@ -112,15 +108,8 @@ struct BoardView: View {
             .gesture(
                 DragGesture(minimumDistance: 0).onEnded { value in
                     guard enabled else { return }
-                    let rawColumn = (value.location.x - margin) / spacing
-                    let rawRow = (value.location.y - margin) / spacing
-                    let column = Int(rawColumn.rounded())
-                    let row = Int(rawRow.rounded())
-                    guard row >= 0, row < RenjuRules.boardSize,
-                          column >= 0, column < RenjuRules.boardSize,
-                          abs(rawRow - Double(row)) <= 0.48,
-                          abs(rawColumn - Double(column)) <= 0.48 else { return }
-                    onSelect(Move(row: row, column: column))
+                    guard let move = boardGeometry.move(at: value.location) else { return }
+                    onSelect(move)
                 }
             )
             .accessibilityRepresentation {
@@ -136,8 +125,7 @@ struct BoardView: View {
                                 Text("\(move.coordinate), \(board[row][column] == .empty ? L10n.text("emptyPoint", language) : L10n.stone(board[row][column], language: language))")
                             }
                             .frame(width: spacing, height: spacing)
-                            .position(x: margin + Double(column) * spacing,
-                                      y: margin + Double(row) * spacing)
+                            .position(boardGeometry.center(move))
                             .disabled(!enabled || board[row][column] != .empty)
                             .accessibilityAddTraits(selectedMove == move ? .isSelected : [])
                             .accessibilityValue(moveNumbers[move].map { L10n.choose("\($0)수", "Move \($0)", language) } ?? forbiddenMoves[move].map {
@@ -156,10 +144,9 @@ struct BoardView: View {
     }
 
     private func drawStone(
-        _ stone: Stone, row: Int, column: Int, spacing: Double, margin: Double,
+        _ stone: Stone, at center: CGPoint, spacing: CGFloat,
         opacity: Double, context: inout GraphicsContext
     ) {
-        let center = CGPoint(x: margin + Double(column) * spacing, y: margin + Double(row) * spacing)
         let diameter = spacing * 0.85
         let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                           width: diameter, height: diameter)

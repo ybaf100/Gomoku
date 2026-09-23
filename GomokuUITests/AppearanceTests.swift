@@ -19,14 +19,24 @@ final class AppearanceTests: XCTestCase {
                 predicate: NSPredicate(format: "exists == true AND hittable == true"),
                 object: button
             )
-            if XCTWaiter.wait(for: [ready], timeout: 3) != .completed {
-                app.swipeUp()
+            _ = XCTWaiter.wait(for: [ready], timeout: 3)
+            // Settings is a long scroll view on some simulator sizes. Scroll that
+            // view, reacquiring the button after each layout update.
+            for _ in 0..<3 where !button.isHittable {
+                let scroll = app.scrollViews.containing(.button, identifier: id).firstMatch
+                if scroll.exists { scroll.swipeUp() } else { app.swipeUp() }
                 button = app.buttons[id].firstMatch
                 XCTAssertTrue(button.waitForExistence(timeout: 10), "Missing button after scroll: \(id)")
             }
         }
         XCTAssertTrue(button.isHittable, "Button is not hittable: \(id)")
-        button.tap()
+        if id.hasPrefix("intersection.") || id.hasPrefix("local.intersection.") {
+            // Canvas accessibility buttons are virtual; committing the tap can
+            // change their hierarchy before XCTest re-resolves a Button query.
+            button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        } else {
+            button.tap()
+        }
     }
 
     private func screenshot(_ name: String) {
@@ -155,10 +165,22 @@ final class AppearanceTests: XCTestCase {
         expectAppearance("dark")
         screenshot("15-phone-settings-dark")
         tap("closeSettings")
+        // This assertion is about compact layout, not clock expiration. A
+        // timed game can end while XCTest resolves the board's 225 cells.
+        let unlimited = app.buttons["time.unlimited"]
+        for _ in 0..<5 where !unlimited.exists {
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        tap("time.unlimited")
         tap("startGame")
         tap("intersection.H8")
         let confirm = app.buttons["confirmMove"]
         // The reserve button stays visible without scrolling on a phone.
+        let visible = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: confirm
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed)
         XCTAssertTrue(confirm.isHittable)
         XCTAssertTrue(confirm.isEnabled)
         screenshot("16-phone-game-dark")
@@ -257,20 +279,97 @@ final class AppearanceTests: XCTestCase {
 
     func testLocalSetupAndMenu() {
         tap("openLocalMatch")
+        XCTAssertTrue(app.buttons["local.black.bottom"].label.contains("아래쪽 플레이어 흑 선공"))
         tap("local.black.top")
         XCTAssertTrue(app.buttons["local.black.top"].isSelected)
-        XCTAssertTrue(app.segmentedControls["local.timePreset"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["local.black.top"].label.contains("위쪽 플레이어 흑 선공"))
+        XCTAssertTrue(app.buttons["local.format.single"].isSelected)
+        tap("local.format.bestOfFive")
+        XCTAssertTrue(app.buttons["local.format.bestOfFive"].isSelected)
+        tap("local.format.bestOfThree")
+        XCTAssertTrue(app.buttons["local.format.bestOfThree"].isSelected)
+        let preset = app.segmentedControls["local.timePreset"]
+        XCTAssertTrue(preset.waitForExistence(timeout: 10))
+        // Inspecting every board intersection can take longer than the Fast
+        // preset on CI. This test checks controls and series, not the clock.
+        preset.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(preset.buttons.element(boundBy: 0).isSelected)
         tap("local.start")
-        tap("local.menu")
-        XCTAssertTrue(app.buttons["local.menu.resign"].waitForExistence(timeout: 5))
-        let undo = app.buttons["local.menu.undo"]
-        XCTAssertTrue(undo.waitForExistence(timeout: 5))
-        XCTAssertFalse(undo.isEnabled, "Undo must be disabled before the first committed move")
-        XCTAssertTrue(app.buttons["local.menu.close"].exists)
-        screenshot("31-local-menu")
-        app.buttons["local.menu.close"].tap()
+        XCTAssertFalse(app.buttons["local.menu"].exists, "The shared hamburger menu was removed")
+        let topPanel = app.descendants(matching: .any)["local.player.top"].firstMatch
+        XCTAssertTrue(topPanel.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["local.player.bottom"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["local.confirm.top"].exists)
+        XCTAssertTrue(app.buttons["local.confirm.bottom"].exists)
+        XCTAssertGreaterThan(app.buttons["local.confirm.top"].frame.width, app.frame.width * 0.7)
+        XCTAssertGreaterThan(app.buttons["local.confirm.bottom"].frame.width, app.frame.width * 0.7)
+        XCTAssertLessThan(app.buttons["local.confirm.top"].frame.midY, app.buttons["local.intersection.H8"].frame.midY)
+        XCTAssertGreaterThan(app.buttons["local.confirm.bottom"].frame.midY, app.buttons["local.intersection.H8"].frame.midY)
+        XCTAssertEqual(topPanel.value as? String, "180°")
+        XCTAssertEqual(app.buttons["local.confirm.top"].value as? String, "180°")
+        XCTAssertFalse(app.buttons["local.confirm.bottom"].isEnabled)
+        XCTAssertTrue(app.descendants(matching: .any)["local.series.top"].firstMatch.label.contains("Bo3"))
+        XCTAssertTrue(app.descendants(matching: .any)["local.series.bottom"].firstMatch.label.contains("1국"))
+        XCTAssertTrue(app.buttons["local.menu.top"].exists && app.buttons["local.menu.bottom"].exists)
         XCTAssertTrue(app.staticTexts["local.stats.bottom"].exists)
         XCTAssertTrue(app.staticTexts["local.stats.top"].exists)
+        screenshot("31-local-face-to-face")
+
+        tap("local.menu.top")
+        let topUndo = app.buttons["local.menu.top.undo"]
+        XCTAssertTrue(topUndo.waitForExistence(timeout: 5))
+        XCTAssertFalse(topUndo.isEnabled, "Undo is disabled before the first move")
+        tap("local.menu.top.close")
+        tap("local.intersection.H8")
+        XCTAssertTrue(app.buttons["local.confirm.top"].isEnabled)
+        tap("local.confirm.top")
+        expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: app.buttons["local.intersection.H8"])
+        waitForExpectations(timeout: 20)
+        tap("local.menu.bottom")
+        XCTAssertFalse(app.buttons["local.menu.bottom.undo"].isEnabled, "Only the player who moved can undo")
+        tap("local.menu.bottom.close")
+        tap("local.menu.top")
+        XCTAssertTrue(app.buttons["local.menu.top.undo"].isEnabled)
+        tap("local.menu.top.undo")
+        XCTAssertTrue(app.buttons["local.intersection.H8"].isEnabled, "Undo restores the board and turn")
+
+        tap("local.menu.top")
+        tap("local.menu.top.resign")
+        XCTAssertTrue(app.alerts["위쪽 플레이어가 기권할까요?"].waitForExistence(timeout: 5))
+        app.alerts.buttons["기권"].tap()
+        XCTAssertTrue(app.buttons["local.nextGame"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["local.stats.bottom"].label.contains("1승"))
+        tap("local.nextGame")
+        XCTAssertTrue(app.descendants(matching: .any)["local.series.bottom"].firstMatch.label.contains("2국"))
+        XCTAssertTrue(app.buttons["local.confirm.bottom"].exists)
+        XCTAssertFalse(app.buttons["local.confirm.top"].isEnabled)
+        XCTAssertFalse(app.descendants(matching: .any)["local.liveVictory"].firstMatch.exists)
+        screenshot("32-local-next-round")
+    }
+
+    func testLocalCustomClockControls() {
+        tap("openLocalMatch")
+        let preset = app.segmentedControls["local.timePreset"]
+        XCTAssertTrue(preset.waitForExistence(timeout: 10))
+        preset.buttons["직접 설정"].tap()
+        XCTAssertTrue(app.staticTexts["플레이어마다 서로 다른 시간을 사용할 수 있습니다."].exists)
+        let bottom = app.switches["local.bottom.unlimited"]
+        XCTAssertTrue(bottom.exists)
+        XCTAssertTrue(app.steppers["local.bottom.initial"].isEnabled)
+        XCTAssertTrue(app.steppers["local.top.increment"].isEnabled)
+        XCTAssertTrue(app.steppers["local.bottom.initial"].label.contains("3:00"))
+        XCTAssertTrue(app.steppers["local.bottom.increment"].label.contains("+2"))
+        XCTAssertTrue(app.steppers["local.top.initial"].label.contains("5:00"))
+        bottom.tap()
+        XCTAssertFalse(app.steppers["local.bottom.initial"].isEnabled)
+        XCTAssertFalse(app.steppers["local.bottom.increment"].isEnabled)
+        XCTAssertTrue(app.staticTexts["시간 제한 없음 · 제한 없이 둡니다."].exists)
+        bottom.tap()
+        XCTAssertTrue(app.steppers["local.bottom.initial"].isEnabled)
+        tap("local.black.top")
+        XCTAssertTrue(app.staticTexts["위쪽 플레이어 · 흑"].exists)
+        XCTAssertTrue(app.staticTexts["아래쪽 플레이어 · 백"].exists)
+        screenshot("33-local-custom-clocks")
     }
 
     func testPlayerOptionsAndForbiddenMarkers() {
