@@ -167,6 +167,10 @@ final class AppearanceTests: XCTestCase {
         tap("closeSettings")
         // This assertion is about compact layout, not clock expiration. A
         // timed game can end while XCTest resolves the board's 225 cells.
+        let unlimited = app.buttons["time.unlimited"]
+        for _ in 0..<5 where !unlimited.exists {
+            app.scrollViews.firstMatch.swipeUp()
+        }
         tap("time.unlimited")
         tap("startGame")
         tap("intersection.H8")
@@ -284,7 +288,12 @@ final class AppearanceTests: XCTestCase {
         XCTAssertTrue(app.buttons["local.format.bestOfFive"].isSelected)
         tap("local.format.bestOfThree")
         XCTAssertTrue(app.buttons["local.format.bestOfThree"].isSelected)
-        XCTAssertTrue(app.segmentedControls["local.timePreset"].waitForExistence(timeout: 10))
+        let preset = app.segmentedControls["local.timePreset"]
+        XCTAssertTrue(preset.waitForExistence(timeout: 10))
+        // Inspecting every board intersection can take longer than the Fast
+        // preset on CI. This test checks controls and series, not the clock.
+        preset.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(preset.buttons.element(boundBy: 0).isSelected)
         tap("local.start")
         XCTAssertFalse(app.buttons["local.menu"].exists, "The shared hamburger menu was removed")
         let topPanel = app.descendants(matching: .any)["local.player.top"].firstMatch
