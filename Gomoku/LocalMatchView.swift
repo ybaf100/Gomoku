@@ -720,7 +720,6 @@ struct LocalMatchView: View {
                 .padding(3)
                 .overlay(RoundedRectangle(cornerRadius: 13)
                     .strokeBorder(game.hasTimeWarning ? theme.danger : Color.clear, lineWidth: 2))
-                .accessibilityIdentifier("local.board")
 
                 playerPanel(stone: game.bottomStone, bottomPlayer: true)
                 confirmButton(stone: game.bottomStone, bottomPlayer: true)

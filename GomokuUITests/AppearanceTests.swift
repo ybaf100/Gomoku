@@ -165,10 +165,18 @@ final class AppearanceTests: XCTestCase {
         expectAppearance("dark")
         screenshot("15-phone-settings-dark")
         tap("closeSettings")
+        // This assertion is about compact layout, not clock expiration. A
+        // timed game can end while XCTest resolves the board's 225 cells.
+        tap("time.unlimited")
         tap("startGame")
         tap("intersection.H8")
         let confirm = app.buttons["confirmMove"]
         // The reserve button stays visible without scrolling on a phone.
+        let visible = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: confirm
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 5), .completed)
         XCTAssertTrue(confirm.isHittable)
         XCTAssertTrue(confirm.isEnabled)
         screenshot("16-phone-game-dark")
