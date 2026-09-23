@@ -153,6 +153,12 @@ struct LocalMatchCore: Sendable {
 
     var canUndo: Bool { result == nil && !undoStack.isEmpty }
 
+    func isTimeWarning(for stone: Stone) -> Bool {
+        guard result == nil, currentTurn == stone,
+              let remaining = stone == .black ? clock.black : clock.white else { return false }
+        return remaining > 0 && remaining <= 10
+    }
+
     mutating func start(setup: LocalClockSetup, bottomStone: Stone, now: TimeInterval) {
         board = Array(repeating: Array(repeating: .empty, count: RenjuRules.boardSize), count: RenjuRules.boardSize)
         moves = []
@@ -211,11 +217,16 @@ struct LocalMatchCore: Sendable {
         return true
     }
 
-    mutating func resignCurrentPlayer() -> GameResult? {
+    mutating func resign(_ stone: Stone) -> GameResult? {
         guard result == nil else { return nil }
-        result = currentTurn == .black ? .blackResigned : .whiteResigned
+        guard stone == .black || stone == .white else { return nil }
+        result = stone == .black ? .blackResigned : .whiteResigned
         selectedMove = nil
         return result
+    }
+
+    mutating func resignCurrentPlayer() -> GameResult? {
+        resign(currentTurn)
     }
 
     @discardableResult
@@ -244,7 +255,7 @@ struct LocalSessionScore: Equatable, Sendable {
     private(set) var top = LocalPlayerStats()
 
     mutating func record(_ result: GameResult, bottomStone: Stone) {
-        guard let winner = winnerStone(result) else { return }
+        guard let winner = result.localWinner else { return }
         if winner == bottomStone {
             bottom.wins += 1
             top.losses += 1
@@ -259,12 +270,75 @@ struct LocalSessionScore: Equatable, Sendable {
         top = LocalPlayerStats()
     }
 
-    private func winnerStone(_ result: GameResult) -> Stone? {
-        switch result {
+}
+
+extension GameResult {
+    var localWinner: Stone? {
+        switch self {
         case .blackWin, .whiteTimeout, .whiteResigned: return .black
         case .whiteWin, .blackTimeout, .blackResigned: return .white
         case .draw: return nil
         }
+    }
+}
+
+enum LocalMatchFormat: String, CaseIterable, Identifiable, Sendable {
+    case single, bestOfThree, bestOfFive
+
+    var id: String { rawValue }
+    var winsNeeded: Int {
+        switch self {
+        case .single: return 1
+        case .bestOfThree: return 2
+        case .bestOfFive: return 3
+        }
+    }
+}
+
+/// In-memory series state, independent from the session's per-game W/L totals.
+struct LocalSeriesScore: Equatable, Sendable {
+    private(set) var format: LocalMatchFormat
+    private(set) var bottomWins = 0
+    private(set) var topWins = 0
+    private(set) var gameNumber = 1
+    private(set) var firstBottomStone: Stone
+    private(set) var didRecordCurrentGame = false
+
+    init(format: LocalMatchFormat = .single, firstBottomStone: Stone = .black) {
+        self.format = format
+        self.firstBottomStone = firstBottomStone
+    }
+
+    var currentBottomStone: Stone { gameNumber.isMultiple(of: 2) ? firstBottomStone.opponent : firstBottomStone }
+    var nextBottomStone: Stone { currentBottomStone.opponent }
+    var isComplete: Bool { bottomWins >= format.winsNeeded || topWins >= format.winsNeeded }
+    var winningBottomPlayer: Bool? {
+        guard isComplete else { return nil }
+        return bottomWins >= format.winsNeeded
+    }
+
+    mutating func record(_ result: GameResult) {
+        guard !isComplete, !didRecordCurrentGame else { return }
+        didRecordCurrentGame = true
+        guard let winner = result.localWinner else { return }
+        if winner == currentBottomStone { bottomWins += 1 }
+        else { topWins += 1 }
+    }
+
+    @discardableResult
+    mutating func advance() -> Bool {
+        guard didRecordCurrentGame, !isComplete else { return false }
+        gameNumber += 1
+        didRecordCurrentGame = false
+        return true
+    }
+
+    mutating func restart() {
+        firstBottomStone = firstBottomStone.opponent
+        bottomWins = 0
+        topWins = 0
+        gameNumber = 1
+        didRecordCurrentGame = false
     }
 }
 

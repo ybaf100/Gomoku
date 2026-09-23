@@ -18,8 +18,10 @@ final class LocalMatchViewModel: ObservableObject {
     @Published private(set) var isValidatingMove = false
     @Published private(set) var completedRecord: GameRecord?
     @Published private(set) var sessionScore = LocalSessionScore()
+    @Published private(set) var series = LocalSeriesScore()
     @Published private(set) var bottomStone: Stone = .black
     @Published var selectedBottomStone: Stone = .black
+    @Published var selectedFormat: LocalMatchFormat = .single
     @Published var isGameActive = false
     @Published var timePreset: LocalTimePreset = .fast
     @Published var bottomCustomUnlimited = false
@@ -31,12 +33,14 @@ final class LocalMatchViewModel: ObservableObject {
 
     var topStone: Stone { bottomStone.opponent }
     var canUndo: Bool { core.canUndo && !isValidatingMove }
+    func canUndo(forBottomPlayer bottom: Bool) -> Bool {
+        canUndo && core.moves.last?.stone == (bottom ? bottomStone : topStone)
+    }
     var showsForbiddenMoves: Bool {
         isGameActive && result == nil && currentTurn == .black
     }
 
     private var core = LocalMatchCore()
-    private var colourAssignment = LocalColourAssignment(selectedBottomStone: .black)
     private var activeSetup = LocalClockSetup.symmetric(.unlimited)
     private var clockTimer: Timer?
     private var validationTask: Task<Void, Never>?
@@ -50,15 +54,27 @@ final class LocalMatchViewModel: ObservableObject {
         self.clockNow = clockNow
     }
 
-    func startGame(swapSides: Bool = false) {
+    func startGame() {
         stopTasks()
-        if swapSides {
-            colourAssignment.rematch()
-        } else {
-            colourAssignment = LocalColourAssignment(selectedBottomStone: selectedBottomStone)
-        }
-        bottomStone = colourAssignment.bottomStone
-        if !swapSides { activeSetup = configuredClockSetup }
+        series = LocalSeriesScore(format: selectedFormat, firstBottomStone: selectedBottomStone)
+        activeSetup = configuredClockSetup
+        beginRound()
+    }
+
+    func nextGame() {
+        guard isGameActive, result != nil, series.advance() else { return }
+        beginRound()
+    }
+
+    func rematch() {
+        guard isGameActive, result != nil, series.isComplete else { return }
+        series.restart()
+        beginRound()
+    }
+
+    private func beginRound() {
+        stopTasks()
+        bottomStone = series.currentBottomStone
         core.start(setup: activeSetup, bottomStone: bottomStone, now: clockNow())
         completedRecord = nil
         notice = nil
@@ -69,13 +85,10 @@ final class LocalMatchViewModel: ObservableObject {
         refreshForbiddenMoves()
     }
 
-    func rematch() {
-        startGame(swapSides: true)
-    }
-
     func resetSession() {
         stopTasks()
         sessionScore.reset()
+        series = LocalSeriesScore()
         isGameActive = false
         completedRecord = nil
         notice = nil
@@ -183,8 +196,8 @@ final class LocalMatchViewModel: ObservableObject {
         }
     }
 
-    func resignCurrentPlayer() {
-        guard core.resignCurrentPlayer() != nil else { return }
+    func resign(bottomPlayer: Bool) {
+        guard isGameActive, core.resign(bottomPlayer ? bottomStone : topStone) != nil else { return }
         publishCore()
         finishFromCore()
     }
@@ -268,6 +281,7 @@ final class LocalMatchViewModel: ObservableObject {
         stopTasks()
         publishCore()
         sessionScore.record(result, bottomStone: bottomStone)
+        series.record(result)
         completedRecord = GameRecord(
             playerStone: bottomStone,
             difficulty: .normal,
@@ -333,9 +347,10 @@ final class LocalMatchViewModel: ObservableObject {
     }
 
     func isTimeLow(for stone: Stone) -> Bool {
-        guard let remaining = stone == .black ? blackTime : whiteTime else { return false }
-        return remaining <= 10
+        core.isTimeWarning(for: stone)
     }
+
+    var hasTimeWarning: Bool { isTimeLow(for: currentTurn) }
 
     func stats(forBottomPlayer bottom: Bool) -> LocalPlayerStats {
         bottom ? sessionScore.bottom : sessionScore.top
@@ -361,7 +376,7 @@ struct LocalMatchView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var showGameMenu = false
+    @State private var resigningBottomPlayer = false
     @State private var showResignConfirmation = false
     @State private var resultReady = false
     @State private var celebrationStart: Date?
@@ -390,22 +405,30 @@ struct LocalMatchView: View {
                 celebrationStart = Date()
                 if !reduceMotion {
                     do { try await Task.sleep(for: .seconds(pattern.duration + 0.2)) } catch { return }
+                } else {
+                    // Show the completed, static gold pattern before presenting the result.
+                    do { try await Task.sleep(for: .milliseconds(400)) } catch { return }
                 }
             }
             guard !Task.isCancelled, game.completedRecord?.id == record.id else { return }
             resultReady = true
         }
-        .alert(
-            L10n.choose("기권하시겠습니까?", "Resign this game?", language),
-            isPresented: $showResignConfirmation
-        ) {
+        .alert(resignationTitle, isPresented: $showResignConfirmation) {
             Button(L10n.choose("기권", "Resign", language), role: .destructive) {
-                game.resignCurrentPlayer()
+                game.resign(bottomPlayer: resigningBottomPlayer)
             }
             Button(L10n.text("cancel", language), role: .cancel) {}
         } message: {
-            Text(L10n.choose("현재 차례의 플레이어가 패배합니다.", "The player whose turn it is will lose.", language))
+            Text(resigningBottomPlayer
+                 ? L10n.choose("위쪽 플레이어의 승리로 기록됩니다.", "The top player wins.", language)
+                 : L10n.choose("아래쪽 플레이어의 승리로 기록됩니다.", "The bottom player wins.", language))
         }
+    }
+
+    private var resignationTitle: String {
+        resigningBottomPlayer
+            ? L10n.choose("아래쪽 플레이어가 기권할까요?", "Bottom player resigns?", language)
+            : L10n.choose("위쪽 플레이어가 기권할까요?", "Top player resigns?", language)
     }
 
     private var landscapeUnsupported: some View {
@@ -456,8 +479,10 @@ struct LocalMatchView: View {
                               systemImage: "person.2.fill")
                             .font(.headline)
 
-                        Text(L10n.choose("첫 대국의 흑 플레이어를 선택하세요. 다시 대결하면 위·아래 플레이어의 색이 서로 바뀝니다.",
-                                         "Choose who plays Black in the first game. A rematch swaps the top and bottom players' colours.",
+                        Text(L10n.choose("누가 흑을 둘까요?", "Who plays Black?", language))
+                            .font(.headline)
+                        Text(L10n.choose("흑은 먼저 둡니다. 다음 판마다 위·아래 플레이어의 돌 색이 서로 바뀝니다.",
+                                         "Black moves first. The top and bottom players swap colours after each game.",
                                          language))
                             .font(.subheadline)
                             .foregroundStyle(theme.secondary)
@@ -466,6 +491,19 @@ struct LocalMatchView: View {
                             colourChoice(bottomIsBlack: true)
                             colourChoice(bottomIsBlack: false)
                         }
+
+                        Divider()
+
+                        Text(L10n.choose("매치 형식", "Match format", language))
+                            .font(.subheadline.bold())
+                        HStack(spacing: 8) {
+                            ForEach(LocalMatchFormat.allCases) { format in
+                                formatChoice(format)
+                            }
+                        }
+                        Text(formatDescription(game.selectedFormat))
+                            .font(.caption)
+                            .foregroundStyle(theme.secondary)
 
                         Divider()
 
@@ -480,8 +518,12 @@ struct LocalMatchView: View {
                         .accessibilityIdentifier("local.timePreset")
 
                         if game.timePreset == .custom {
+                            Text(L10n.choose("플레이어마다 서로 다른 시간을 사용할 수 있습니다.",
+                                             "Each player can use a different clock.", language))
+                                .font(.caption).foregroundStyle(theme.secondary)
                             customClockEditor(
                                 title: L10n.choose("아래쪽 플레이어", "Bottom player", language),
+                                stone: game.selectedBottomStone,
                                 unlimited: $game.bottomCustomUnlimited,
                                 seconds: $game.bottomCustomSeconds,
                                 increment: $game.bottomCustomIncrement,
@@ -489,6 +531,7 @@ struct LocalMatchView: View {
                             )
                             customClockEditor(
                                 title: L10n.choose("위쪽 플레이어", "Top player", language),
+                                stone: game.selectedBottomStone.opponent,
                                 unlimited: $game.topCustomUnlimited,
                                 seconds: $game.topCustomSeconds,
                                 increment: $game.topCustomIncrement,
@@ -525,46 +568,99 @@ struct LocalMatchView: View {
         return Button {
             game.selectedBottomStone = bottomIsBlack ? .black : .white
         } label: {
-            VStack(spacing: 9) {
-                StoneDisc(stone: .black, size: 30)
-                Text(bottomIsBlack
-                     ? L10n.choose("아래쪽이 흑", "Bottom is Black", language)
-                     : L10n.choose("위쪽이 흑", "Top is Black", language))
-                    .font(.subheadline.bold())
-                    .multilineTextAlignment(.center)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    Text(bottomIsBlack
+                         ? L10n.choose("아래쪽이 흑", "Bottom is Black", language)
+                         : L10n.choose("위쪽이 흑", "Top is Black", language))
+                        .font(.subheadline.bold())
+                    Spacer(minLength: 0)
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selected ? theme.accent : theme.secondary)
+                }
+                seatPreview(bottom: false, stone: bottomIsBlack ? .white : .black)
+                Divider()
+                seatPreview(bottom: true, stone: bottomIsBlack ? .black : .white)
             }
             .frame(maxWidth: .infinity)
-            .padding(14)
+            .padding(12)
             .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 2 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(bottomIsBlack ? "local.black.bottom" : "local.black.top")
+        .accessibilityLabel(bottomIsBlack
+            ? L10n.choose("아래쪽이 흑, 위쪽 플레이어 백, 아래쪽 플레이어 흑 선공",
+                          "Bottom Black, top White, bottom Black moves first", language)
+            : L10n.choose("위쪽이 흑, 위쪽 플레이어 흑 선공, 아래쪽 플레이어 백",
+                          "Top Black, top Black moves first, bottom White", language))
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func seatPreview(bottom: Bool, stone: Stone) -> some View {
+        HStack(spacing: 6) {
+            StoneDisc(stone: stone, size: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(bottom ? L10n.choose("아래쪽", "Bottom", language) : L10n.choose("위쪽", "Top", language))
+                    .font(.caption2)
+                Text(L10n.stone(stone, language: language) + (stone == .black ? L10n.choose(" · 선공", " · first", language) : ""))
+                    .font(.caption.bold())
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func formatChoice(_ format: LocalMatchFormat) -> some View {
+        let selected = game.selectedFormat == format
+        return Button { game.selectedFormat = format } label: {
+            Text(formatLabel(format))
+                .font(.caption.bold())
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .padding(.horizontal, 3)
+                .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 2 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("local.format.\(format.rawValue)")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func customClockEditor(
         title: String,
+        stone: Stone,
         unlimited: Binding<Bool>,
         seconds: Binding<Double>,
         increment: Binding<Double>,
         prefix: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let timed = !unlimited.wrappedValue
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(title).font(.subheadline.bold())
+                HStack(spacing: 6) {
+                    StoneDisc(stone: stone, size: 23)
+                    Text(title + " · " + L10n.stone(stone, language: language)).font(.subheadline.bold())
+                }
                 Spacer()
-                Toggle(L10n.text("unlimited", language), isOn: unlimited)
+                Toggle(L10n.choose("시간 제한 사용", "Use clock", language), isOn: Binding(
+                    get: { !unlimited.wrappedValue }, set: { unlimited.wrappedValue = !$0 }
+                ))
                     .labelsHidden()
-                    .accessibilityLabel(title + " " + L10n.text("unlimited", language))
+                    .tint(theme.accent)
+                    .accessibilityLabel(title + " " + L10n.choose("시간 제한 사용", "Use clock", language))
                     .accessibilityIdentifier("local.\(prefix).unlimited")
             }
-            if !unlimited.wrappedValue {
+            Text(timed ? L10n.choose("시간 제한 사용 · 0초가 되면 시간패합니다.", "Clock on · reaching zero loses the game.", language)
+                       : L10n.choose("시간 제한 없음 · 제한 없이 둡니다.", "No clock · play without a time limit.", language))
+                .font(.caption).foregroundStyle(timed ? theme.accent : theme.secondary)
+            VStack(spacing: 8) {
                 Stepper(value: seconds, in: 15...7200, step: 15) {
                     HStack {
                         Text(L10n.choose("시작 시간", "Starting time", language))
                         Spacer()
-                        Text(formatTime(seconds.wrappedValue)).monospacedDigit().bold()
+                        Text(formatTime(seconds.wrappedValue))
+                            .font(.title3.bold()).monospacedDigit()
                     }
                 }
                 .accessibilityIdentifier("local.\(prefix).initial")
@@ -573,24 +669,30 @@ struct LocalMatchView: View {
                         Text(L10n.choose("착수 후 추가", "Increment", language))
                         Spacer()
                         Text("+\(Int(increment.wrappedValue))\(L10n.choose("초", "s", language))")
-                            .monospacedDigit().bold()
+                            .font(.title3.bold()).monospacedDigit()
                     }
                 }
                 .accessibilityIdentifier("local.\(prefix).increment")
             }
+            .disabled(!timed)
+            .opacity(timed ? 1 : 0.45)
         }
         .padding(14)
-        .background(theme.inset.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+        .background(timed ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(timed ? theme.accent : theme.border))
     }
 
     private func matchScreen(size: CGSize) -> some View {
-        let boardSide = min(size.width - 28, size.height - 330)
-        return VStack(spacing: 10) {
-            playerPanel(stone: game.topStone, bottomPlayer: false,
-                        positionText: L10n.choose("위쪽 플레이어", "Top player", language))
-                .rotationEffect(.degrees(180))
+        let boardSide = max(230, min(size.width - 20, size.height - 340))
+        return ScrollView {
+            VStack(spacing: 6) {
+                playerPanel(stone: game.topStone, bottomPlayer: false)
+                    .rotationEffect(.degrees(180))
+                    .accessibilityValue("180°")
+                confirmButton(stone: game.topStone, bottomPlayer: false)
+                    .rotationEffect(.degrees(180))
+                    .accessibilityValue("180°")
 
-            ZStack {
                 BoardView(
                     board: game.board,
                     lastMove: game.lastMove,
@@ -603,95 +705,57 @@ struct LocalMatchView: View {
                     accessibilityPrefix: "local.intersection",
                     onSelect: game.selectMove
                 )
-                .frame(width: max(280, boardSide), height: max(280, boardSide))
-
-                if let record = game.completedRecord, let start = celebrationStart {
-                    let pattern = VictoryPattern(record: record)
-                    if !pattern.isEmpty {
-                        WinningCelebration(pattern: pattern, startedAt: start, language: language)
-                            .allowsHitTesting(false)
-                            .accessibilityIdentifier("local.liveVictory")
+                .frame(width: boardSide, height: boardSide)
+                .overlay {
+                    // The overlay is attached to the exact board frame, never to the outer VStack.
+                    if let record = game.completedRecord, let start = celebrationStart {
+                        let pattern = VictoryPattern(record: record)
+                        if !pattern.isEmpty {
+                            WinningCelebration(pattern: pattern, startedAt: start, language: language)
+                                .allowsHitTesting(false)
+                                .accessibilityIdentifier("local.liveVictory")
+                        }
                     }
                 }
+                .padding(3)
+                .overlay(RoundedRectangle(cornerRadius: 13)
+                    .strokeBorder(game.hasTimeWarning ? theme.danger : Color.clear, lineWidth: 2))
+                .accessibilityIdentifier("local.board")
+
+                playerPanel(stone: game.bottomStone, bottomPlayer: true)
+                confirmButton(stone: game.bottomStone, bottomPlayer: true)
             }
             .frame(maxWidth: .infinity)
-
-            playerPanel(stone: game.bottomStone, bottomPlayer: true,
-                        positionText: L10n.choose("아래쪽 플레이어", "Bottom player", language))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
         }
-        .overlay(alignment: .topTrailing) {
-            VStack(alignment: .trailing, spacing: 8) {
-                Button { showGameMenu.toggle() } label: {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.title2.bold())
-                        .foregroundStyle(theme.ink)
-                        .padding(10)
-                        .background(theme.surface.opacity(0.96), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.choose("대국 메뉴", "Game menu", language))
-                .accessibilityIdentifier("local.menu")
-
-                if showGameMenu {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Button(role: .destructive) {
-                            showGameMenu = false
-                            showResignConfirmation = true
-                        } label: {
-                            Label(L10n.choose("기권", "Resign", language), systemImage: "flag.fill")
-                        }
-                        .accessibilityIdentifier("local.menu.resign")
-
-                        Button {
-                            showGameMenu = false
-                            game.undoLastMove()
-                        } label: {
-                            Label(L10n.choose("무르기", "Undo", language), systemImage: "arrow.uturn.backward")
-                        }
-                        .disabled(!game.canUndo)
-                        .accessibilityIdentifier("local.menu.undo")
-
-                        Button {
-                            game.resetSession()
-                            dismiss()
-                        } label: {
-                            Label(L10n.text("backHome", language), systemImage: "house")
-                        }
-                        .accessibilityIdentifier("local.menu.home")
-
-                        Divider()
-
-                        Button {
-                            showGameMenu = false
-                        } label: {
-                            Label(L10n.choose("닫기", "Close", language), systemImage: "xmark")
-                        }
-                        .accessibilityIdentifier("local.menu.close")
-                    }
-                    .buttonStyle(.plain)
-                    .frame(minWidth: 170, alignment: .leading)
-                    .padding(14)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(theme.border))
-                    .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
-                    .transition(.scale(scale: 0.9, anchor: .topTrailing).combined(with: .opacity))
-                }
-            }
-            .padding(8)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showGameMenu)
-        }
+        .scrollIndicators(.hidden)
         .overlay {
             if resultReady, game.result != nil {
                 VStack(spacing: 12) {
+                    if game.series.isComplete {
+                        Text(seriesVictoryTitle)
+                            .font(.system(.title2, design: .rounded, weight: .bold))
+                    }
                     Text(game.resultTitle(language: language))
-                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .font(.headline)
+                    Text(seriesScoreText)
+                        .font(.subheadline.monospacedDigit())
+                    if !game.series.isComplete {
+                        Text(nextColourText)
+                            .font(.subheadline)
+                    }
                     HStack(spacing: 10) {
-                        Button(L10n.choose("다시 대결", "Rematch", language)) {
+                        Button(game.series.isComplete
+                               ? L10n.choose("같은 조건으로 다시 대결", "Play another series", language)
+                               : L10n.choose("다음 대국", "Next game", language)) {
                             resultReady = false
-                            game.rematch()
+                            celebrationStart = nil
+                            if game.series.isComplete { game.rematch() }
+                            else { game.nextGame() }
                         }
                         .buttonStyle(GomokuButtonStyle())
-                        .accessibilityIdentifier("local.rematch")
+                        .accessibilityIdentifier(game.series.isComplete ? "local.rematch" : "local.nextGame")
                         Button(L10n.choose("나가기", "Exit", language)) {
                             game.resetSession()
                             dismiss()
@@ -706,52 +770,101 @@ struct LocalMatchView: View {
                 .padding(24)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
     }
 
-    private func playerPanel(stone: Stone, bottomPlayer: Bool, positionText: String) -> some View {
+    private func playerPanel(stone: Stone, bottomPlayer: Bool) -> some View {
         let active = game.currentTurn == stone && game.result == nil
-        let canPlace = active && game.selectedMove != nil && !game.isValidatingMove
         let stats = game.stats(forBottomPlayer: bottomPlayer)
+        let low = game.isTimeLow(for: stone)
+        let seat = bottomPlayer ? L10n.choose("아래쪽 플레이어", "Bottom player", language)
+                                : L10n.choose("위쪽 플레이어", "Top player", language)
         return SurfaceCard {
-            HStack(spacing: 12) {
-                StoneDisc(stone: stone, size: 30)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(positionText).font(.caption).foregroundStyle(theme.secondary)
-                    Text(L10n.stone(stone, language: language)).font(.headline)
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        StoneDisc(stone: stone, size: 22)
+                        Text(seat).font(.caption.bold())
+                    }
+                    Text(L10n.stone(stone, language: language) + " · " + (active ? L10n.text("place", language) : L10n.choose("대기", "Wait", language)))
+                        .font(.caption)
+                        .foregroundStyle(active ? theme.accent : theme.secondary)
                     Text(statsText(stats))
                         .font(.caption2)
                         .foregroundStyle(theme.secondary)
                         .accessibilityIdentifier(bottomPlayer ? "local.stats.bottom" : "local.stats.top")
                 }
-                Spacer()
-                if let selected = game.selectedMove, active {
-                    Text(selected.coordinate)
-                        .font(.system(.body, design: .monospaced, weight: .bold))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(spacing: 1) {
+                    Text(formatLabel(game.series.format))
+                    Text("\(game.series.gameNumber)\(L10n.choose("국", " game", language))")
+                    Text(seriesScoreText).monospacedDigit()
                 }
+                .font(.caption2.bold())
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier(bottomPlayer ? "local.series.bottom" : "local.series.top")
                 Text(game.formattedTime(for: stone))
-                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .font(.system(.title, design: .rounded, weight: .bold))
+                    .minimumScaleFactor(0.65)
+                    .lineLimit(1)
                     .monospacedDigit()
-                    .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : active ? theme.accent : theme.ink)
-
-                Button {
-                    game.confirmSelectedMove(for: stone)
+                    .foregroundStyle(low ? theme.danger : active ? theme.accent : theme.ink)
+                    .padding(.horizontal, 5)
+                    .background(low ? theme.danger.opacity(0.13) : Color.clear,
+                                in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier(bottomPlayer ? "local.timer.bottom" : "local.timer.top")
+                Menu {
+                    Button {
+                        game.undoLastMove()
+                        resultReady = false
+                        celebrationStart = nil
+                    } label: {
+                        Label(L10n.choose("마지막 수 무르기", "Undo last move", language), systemImage: "arrow.uturn.backward")
+                    }
+                    .disabled(!game.canUndo(forBottomPlayer: bottomPlayer))
+                    .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.undo" : "local.menu.top.undo")
+                    Button(role: .destructive) {
+                        resigningBottomPlayer = bottomPlayer
+                        showResignConfirmation = true
+                    } label: {
+                        Label(L10n.choose("기권", "Resign", language), systemImage: "flag.fill")
+                    }
+                    .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.resign" : "local.menu.top.resign")
+                    Button {
+                        game.resetSession()
+                        dismiss()
+                    } label: {
+                        Label(L10n.text("backHome", language), systemImage: "house")
+                    }
+                    .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.home" : "local.menu.top.home")
+                    Button(L10n.choose("닫기", "Close", language)) {}
+                        .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.close" : "local.menu.top.close")
                 } label: {
-                    Text(game.isValidatingMove && active
-                         ? L10n.text("validatingMove", language)
-                         : active ? L10n.text("place", language)
-                         : L10n.choose("대기", "Wait", language))
-                        .frame(minWidth: 70)
+                    Image(systemName: "ellipsis")
+                        .font(.headline.bold())
+                        .frame(width: 40, height: 44)
                 }
-                .buttonStyle(GomokuButtonStyle(primary: active))
-                .disabled(!canPlace)
+                .accessibilityLabel(seat + " " + L10n.choose("메뉴", "menu", language))
+                .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom" : "local.menu.top")
             }
         }
         .overlay {
             RoundedRectangle(cornerRadius: 22)
-                .strokeBorder(active ? theme.accent.opacity(0.65) : Color.clear, lineWidth: 2)
+                .strokeBorder(low ? theme.danger : active ? theme.accent.opacity(0.75) : Color.clear, lineWidth: 2)
         }
+        .accessibilityIdentifier(bottomPlayer ? "local.player.bottom" : "local.player.top")
+    }
+
+    private func confirmButton(stone: Stone, bottomPlayer: Bool) -> some View {
+        let active = game.currentTurn == stone && game.result == nil
+        return Button { game.confirmSelectedMove(for: stone) } label: {
+            Text(game.isValidatingMove && active ? L10n.text("validatingMove", language)
+                 : active ? L10n.text("place", language) : L10n.choose("대기", "Wait", language))
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(GomokuButtonStyle(primary: active))
+        .disabled(!active || game.selectedMove == nil || game.isValidatingMove)
+        .accessibilityIdentifier(bottomPlayer ? "local.confirm.bottom" : "local.confirm.top")
     }
 
     private func statsText(_ stats: LocalPlayerStats) -> String {
@@ -760,13 +873,47 @@ struct LocalMatchView: View {
                            "\(stats.wins)W \(stats.losses)L · \(rate)", language)
     }
 
+    private func formatLabel(_ format: LocalMatchFormat) -> String {
+        switch format {
+        case .single: return L10n.choose("단판", "Single", language)
+        case .bestOfThree: return L10n.choose("Bo3 · 2승 선취", "Bo3 · first to 2", language)
+        case .bestOfFive: return L10n.choose("Bo5 · 3승 선취", "Bo5 · first to 3", language)
+        }
+    }
+
+    private func formatDescription(_ format: LocalMatchFormat) -> String {
+        switch format {
+        case .single: return L10n.choose("1승을 먼저 하면 종료됩니다.", "First win ends the match.", language)
+        case .bestOfThree: return L10n.choose("2승을 먼저 달성한 플레이어가 최종 승리합니다.", "First player to two wins takes the series.", language)
+        case .bestOfFive: return L10n.choose("3승을 먼저 달성한 플레이어가 최종 승리합니다.", "First player to three wins takes the series.", language)
+        }
+    }
+
+    private var seriesScoreText: String {
+        "\(game.series.topWins):\(game.series.bottomWins)"
+    }
+
+    private var nextColourText: String {
+        let nextBottom = game.series.nextBottomStone
+        return L10n.choose("다음 판: 위쪽 \(L10n.stone(nextBottom.opponent, language: language)) · 아래쪽 \(L10n.stone(nextBottom, language: language))",
+                           "Next: top \(L10n.stone(nextBottom.opponent, language: language)) · bottom \(L10n.stone(nextBottom, language: language))", language)
+    }
+
+    private var seriesVictoryTitle: String {
+        let winner = game.series.winningBottomPlayer == true
+            ? L10n.choose("아래쪽 플레이어", "Bottom player", language)
+            : L10n.choose("위쪽 플레이어", "Top player", language)
+        return L10n.choose("\(formatLabel(game.series.format)) 승리 · \(winner)",
+                           "\(formatLabel(game.series.format)) winner · \(winner)", language)
+    }
+
     private func presetName(_ preset: LocalTimePreset) -> String {
         switch preset {
         case .unlimited: return L10n.text("unlimited", language)
         case .blitz: return L10n.choose("Blitz", "Blitz", language)
         case .fast: return L10n.choose("Fast", "Fast", language)
         case .slow: return L10n.choose("Slow", "Slow", language)
-        case .custom: return L10n.choose("직접", "Custom", language)
+        case .custom: return L10n.choose("직접 설정", "Custom", language)
         }
     }
 

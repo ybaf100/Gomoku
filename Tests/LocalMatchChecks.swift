@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 extension EngineChecks {
     static func localMatchChecks() {
@@ -41,6 +42,9 @@ extension EngineChecks {
 
         var resign = LocalMatchCore(now: 0)
         require(resign.resignCurrentPlayer() == .blackResigned, "Local resignation loses for the current player")
+        var topResigns = LocalMatchCore(now: 0)
+        require(topResigns.resign(.white) == .whiteResigned && topResigns.result?.localWinner == .black,
+                "a seat can resign from its own menu even when it is not that seat's turn")
         var score = LocalSessionScore()
         score.record(.blackResigned, bottomStone: .black)
         score.record(.whiteTimeout, bottomStone: .white)
@@ -93,6 +97,117 @@ extension EngineChecks {
         )
         require(VictoryPattern(record: overlineRecord).isEmpty,
                 "Black overline cannot leave a celebration pattern")
+
+        localSeriesChecks()
+        localWarningChecks()
+        localGeometryChecks()
+    }
+
+    private static func localSeriesChecks() {
+        var single = LocalSeriesScore(format: .single, firstBottomStone: .white)
+        require(single.currentBottomStone == .white && single.gameNumber == 1,
+                "selected colours apply to the first game")
+        single.record(.whiteResigned)
+        require(single.topWins == 1 && single.isComplete && !single.advance(),
+                "one resignation finishes a single game series without double counting")
+        single.restart()
+        require(single.currentBottomStone == .black && single.topWins == 0 && single.gameNumber == 1,
+                "new series swaps its original opening colour and resets only series score")
+
+        for (format, results, expectedBottom, expectedTop) in [
+            (LocalMatchFormat.bestOfThree, [true, true], 2, 0),
+            (.bestOfThree, [true, false, true], 2, 1),
+            (.bestOfFive, [true, true, true], 3, 0),
+            (.bestOfFive, [true, false, true, true], 3, 1),
+            (.bestOfFive, [true, false, true, false, true], 3, 2)
+        ] {
+            var series = LocalSeriesScore(format: format, firstBottomStone: .black)
+            var session = LocalSessionScore()
+            require(!series.advance(), "a new series cannot advance before finishing a game")
+            for (index, bottomWins) in results.enumerated() {
+                let bottomStone = series.currentBottomStone
+                let winner = bottomWins ? bottomStone : bottomStone.opponent
+                let outcome: GameResult = winner == .black ? .blackWin : .whiteWin
+                series.record(outcome)
+                series.record(outcome)
+                session.record(outcome, bottomStone: bottomStone)
+                if index < results.count - 1 {
+                    require(!series.isComplete && series.advance(), "series continues until the target number of wins")
+                    require(series.currentBottomStone == bottomStone.opponent,
+                            "colours alternate after every finished game")
+                }
+            }
+            require(series.isComplete && series.bottomWins == expectedBottom && series.topWins == expectedTop,
+                    "best-of series ends at the correct first-to target")
+            require(session.bottom.wins == expectedBottom && session.bottom.losses == expectedTop,
+                    "session W/L counts individual games, not an extra series victory")
+            require(!series.advance(), "completed series cannot accept another game")
+            series.restart()
+            require(series.bottomWins == 0 && series.topWins == 0 && series.gameNumber == 1
+                    && session.bottom.wins == expectedBottom,
+                    "series restart retains session stats but resets its score")
+        }
+
+        var draw = LocalSeriesScore(format: .bestOfThree)
+        draw.record(.draw)
+        require(draw.bottomWins == 0 && draw.topWins == 0 && draw.advance()
+                && draw.currentBottomStone == .white,
+                "draw leaves the score unchanged but consumes a game and swaps colours")
+        draw.record(.blackWin)
+        require(draw.topWins == 1 && !draw.isComplete && draw.advance(), "Bo3 stays active at 1:0")
+        draw.record(.whiteTimeout)
+        require(draw.bottomWins == 1 && !draw.isComplete && draw.advance(),
+                "a timeout win contributes exactly one series point")
+        draw.record(.whiteResigned)
+        require(draw.topWins == 2 && draw.isComplete, "a resignation win finishes the series")
+        draw = LocalSeriesScore()
+        require(draw.gameNumber == 1 && draw.bottomWins == 0 && draw.topWins == 0,
+                "leaving the main menu resets the in-memory series")
+    }
+
+    private static func localWarningChecks() {
+        var core = LocalMatchCore(setup: .init(
+            bottom: .init(initial: 11, increment: 0),
+            top: .init(initial: 9, increment: 0)), bottomStone: .black, now: 0)
+        require(!core.isTimeWarning(for: .black) && !core.isTimeWarning(for: .white),
+                "11 seconds and an opponent waiting at 9 seconds show no warning")
+        core.settleClock(at: 1)
+        require(core.isTimeWarning(for: .black), "10 seconds on turn triggers the warning")
+        core.settleClock(at: 2)
+        require(core.isTimeWarning(for: .black) && !core.isTimeWarning(for: .white),
+                "9 seconds warns only the player whose turn it is")
+        require(core.commit(Move(row: 7, column: 7), stone: .black, at: 2)
+                && core.isTimeWarning(for: .white) && !core.isTimeWarning(for: .black),
+                "turn handoff activates the waiting 9-second player's warning")
+        require(core.undo(at: 3) && core.isTimeWarning(for: .black),
+                "undo restores clock, turn and warning from their snapshot")
+        require(core.commit(Move(row: 7, column: 7), stone: .black, at: 3), "turn resumes after undo")
+        core.settleClock(at: 12)
+        require(core.result == .whiteTimeout && !core.isTimeWarning(for: .white),
+                "zero seconds causes a timeout and clears warning")
+        core.start(setup: .symmetric(.unlimited), bottomStone: .white, now: 13)
+        require(!core.isTimeWarning(for: .black) && !core.isTimeWarning(for: .white),
+                "new Unlimited game has no stale warning")
+    }
+
+    private static func localGeometryChecks() {
+        for side in [CGFloat(375), CGFloat(768)] {
+            let geometry = BoardGeometry(size: CGSize(width: side, height: side))
+            for direction in [(0, 1), (1, 0), (1, 1), (-1, 1)] {
+                for step in 0..<5 {
+                    let move = Move(row: 7 + direction.0 * step, column: 5 + direction.1 * step)
+                    let stoneCenter = geometry.center(move)
+                    let ringCenter = geometry.center(move)
+                    let lineEndpoint = geometry.center(move)
+                    require(stoneCenter == ringCenter && ringCenter == lineEndpoint
+                            && geometry.move(at: stoneCenter) == move,
+                            "all four victory directions use the stone's exact board intersection")
+                }
+            }
+            let rotatedPlayerUI = geometry.center(Move(row: 7, column: 6))
+            require(rotatedPlayerUI == geometry.center(Move(row: 7, column: 6)),
+                    "top player rotation does not affect board-space coordinates")
+        }
     }
 
     private static func localWinningCore(winningStone: Stone, points: [Move]) -> LocalMatchCore {

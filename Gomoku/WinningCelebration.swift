@@ -12,13 +12,12 @@ struct WinningCelebration: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: finished || reduceMotion)) { timeline in
             let frame = pattern.frame(elapsed: reduceMotion || finished ? pattern.duration : timeline.date.timeIntervalSince(startedAt))
             Canvas { context, size in
-                let side = min(size.width, size.height)
-                let margin = max(22.0, side * 0.067)
-                let spacing = max(1, side - margin * 2) / 14
+                let geometry = BoardGeometry(size: size)
+                let spacing = geometry.spacing
                 let gold = Color(hex: 0xE4B84C)
                 let light = Color(hex: 0xFFF0B3)
                 func point(_ move: Move) -> CGPoint {
-                    CGPoint(x: margin + Double(move.column) * spacing, y: margin + Double(move.row) * spacing)
+                    geometry.center(move)
                 }
                 for move in frame.lit {
                     let center = point(move)
