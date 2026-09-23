@@ -802,6 +802,7 @@ struct LocalMatchView: View {
                 .font(.caption2.bold())
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
                 .accessibilityIdentifier(bottomPlayer ? "local.series.bottom" : "local.series.top")
                 Text(game.formattedTime(for: stone))
                     .font(.system(.title, design: .rounded, weight: .bold))
@@ -852,6 +853,7 @@ struct LocalMatchView: View {
             RoundedRectangle(cornerRadius: 22)
                 .strokeBorder(low ? theme.danger : active ? theme.accent.opacity(0.75) : Color.clear, lineWidth: 2)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(bottomPlayer ? "local.player.bottom" : "local.player.top")
     }
 

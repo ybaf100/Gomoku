@@ -19,14 +19,24 @@ final class AppearanceTests: XCTestCase {
                 predicate: NSPredicate(format: "exists == true AND hittable == true"),
                 object: button
             )
-            if XCTWaiter.wait(for: [ready], timeout: 3) != .completed {
-                app.swipeUp()
+            _ = XCTWaiter.wait(for: [ready], timeout: 3)
+            // Settings is a long scroll view on some simulator sizes. Scroll that
+            // view, reacquiring the button after each layout update.
+            for _ in 0..<3 where !button.isHittable {
+                let scroll = app.scrollViews.containing(.button, identifier: id).firstMatch
+                if scroll.exists { scroll.swipeUp() } else { app.swipeUp() }
                 button = app.buttons[id].firstMatch
                 XCTAssertTrue(button.waitForExistence(timeout: 10), "Missing button after scroll: \(id)")
             }
         }
         XCTAssertTrue(button.isHittable, "Button is not hittable: \(id)")
-        button.tap()
+        if id.hasPrefix("intersection.") || id.hasPrefix("local.intersection.") {
+            // Canvas accessibility buttons are virtual; committing the tap can
+            // change their hierarchy before XCTest re-resolves a Button query.
+            button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        } else {
+            button.tap()
+        }
     }
 
     private func screenshot(_ name: String) {
@@ -269,19 +279,20 @@ final class AppearanceTests: XCTestCase {
         XCTAssertTrue(app.segmentedControls["local.timePreset"].waitForExistence(timeout: 10))
         tap("local.start")
         XCTAssertFalse(app.buttons["local.menu"].exists, "The shared hamburger menu was removed")
-        XCTAssertTrue(app.otherElements["local.player.top"].exists)
-        XCTAssertTrue(app.otherElements["local.player.bottom"].exists)
+        let topPanel = app.descendants(matching: .any)["local.player.top"].firstMatch
+        XCTAssertTrue(topPanel.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["local.player.bottom"].firstMatch.exists)
         XCTAssertTrue(app.buttons["local.confirm.top"].exists)
         XCTAssertTrue(app.buttons["local.confirm.bottom"].exists)
         XCTAssertGreaterThan(app.buttons["local.confirm.top"].frame.width, app.frame.width * 0.7)
         XCTAssertGreaterThan(app.buttons["local.confirm.bottom"].frame.width, app.frame.width * 0.7)
         XCTAssertLessThan(app.buttons["local.confirm.top"].frame.midY, app.buttons["local.intersection.H8"].frame.midY)
         XCTAssertGreaterThan(app.buttons["local.confirm.bottom"].frame.midY, app.buttons["local.intersection.H8"].frame.midY)
-        XCTAssertEqual(app.otherElements["local.player.top"].value as? String, "180°")
+        XCTAssertEqual(topPanel.value as? String, "180°")
         XCTAssertEqual(app.buttons["local.confirm.top"].value as? String, "180°")
         XCTAssertFalse(app.buttons["local.confirm.bottom"].isEnabled)
-        XCTAssertTrue(app.staticTexts["local.series.top"].label.contains("Bo3"))
-        XCTAssertTrue(app.staticTexts["local.series.bottom"].label.contains("1국"))
+        XCTAssertTrue(app.descendants(matching: .any)["local.series.top"].firstMatch.label.contains("Bo3"))
+        XCTAssertTrue(app.descendants(matching: .any)["local.series.bottom"].firstMatch.label.contains("1국"))
         XCTAssertTrue(app.buttons["local.menu.top"].exists && app.buttons["local.menu.bottom"].exists)
         XCTAssertTrue(app.staticTexts["local.stats.bottom"].exists)
         XCTAssertTrue(app.staticTexts["local.stats.top"].exists)
@@ -312,7 +323,7 @@ final class AppearanceTests: XCTestCase {
         XCTAssertTrue(app.buttons["local.nextGame"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["local.stats.bottom"].label.contains("1승"))
         tap("local.nextGame")
-        XCTAssertTrue(app.staticTexts["local.series.bottom"].label.contains("2국"))
+        XCTAssertTrue(app.descendants(matching: .any)["local.series.bottom"].firstMatch.label.contains("2국"))
         XCTAssertTrue(app.buttons["local.confirm.bottom"].exists)
         XCTAssertFalse(app.buttons["local.confirm.top"].isEnabled)
         XCTAssertFalse(app.descendants(matching: .any)["local.liveVictory"].firstMatch.exists)
