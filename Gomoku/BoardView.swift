@@ -25,9 +25,23 @@ struct BoardView: View {
 
             Canvas { context, _ in
                 let frame = Path(roundedRect: CGRect(x: 1, y: 1, width: side - 2, height: side - 2),
-                                 cornerRadius: side * 0.036)
+                                 cornerRadius: side * 0.036, style: .continuous)
                 context.fill(frame, with: .color(theme.board))
+
+                // Faint kaya grain. Deterministic, so the board never shimmers between redraws.
+                var grain = Path()
+                for line in 0..<9 {
+                    let y = side * (CGFloat(line) + 0.55) / 9.1
+                    let wobble = side * 0.007 * CGFloat(sin(Double(line) * 1.7 + 0.4))
+                    grain.move(to: CGPoint(x: side * 0.03, y: y))
+                    grain.addCurve(to: CGPoint(x: side * 0.97, y: y + wobble * 2),
+                                   control1: CGPoint(x: side * 0.33, y: y + wobble * 3),
+                                   control2: CGPoint(x: side * 0.66, y: y - wobble * 3))
+                }
+                context.stroke(grain, with: .color(theme.boardEdge.opacity(0.16)),
+                               lineWidth: max(1, side * 0.004))
                 context.stroke(frame, with: .color(theme.boardEdge), lineWidth: 2)
+
                 var grid = Path()
                 for index in 0..<RenjuRules.boardSize {
                     let offset = margin + CGFloat(index) * spacing
@@ -38,17 +52,20 @@ struct BoardView: View {
 
                     let letter = String(UnicodeScalar(65 + index)!)
                     let labelFont = Font.system(size: max(8, min(12, spacing * 0.32)),
-                                                weight: .medium, design: .rounded)
+                                                weight: .medium, design: .serif)
                     context.draw(Text(letter).font(labelFont).foregroundColor(theme.boardLabel),
                                  at: CGPoint(x: offset, y: margin * 0.43))
                     context.draw(Text("\(index + 1)").font(labelFont).foregroundColor(theme.boardLabel),
                                  at: CGPoint(x: margin * 0.39, y: offset))
                 }
                 context.stroke(grid, with: .color(theme.grid), lineWidth: max(0.65, side / 820))
+                // A heavier outer line, as on a printed board.
+                context.stroke(Path(CGRect(x: margin, y: margin, width: boardSide, height: boardSide)),
+                               with: .color(theme.grid), lineWidth: max(1.3, side / 420))
 
                 for star in [(3, 3), (3, 11), (7, 7), (11, 3), (11, 11)] {
                     let point = boardGeometry.center(Move(row: star.0, column: star.1))
-                    let diameter = max(4, spacing * 0.17)
+                    let diameter = max(4.5, spacing * 0.2)
                     context.fill(Path(ellipseIn: CGRect(x: point.x - diameter / 2, y: point.y - diameter / 2,
                                                        width: diameter, height: diameter)),
                                  with: .color(theme.grid))
@@ -64,20 +81,21 @@ struct BoardView: View {
                         if let number = moveNumbers[point] {
                             let center = boardGeometry.center(point)
                             context.draw(Text("\(number)")
-                                .font(.system(size: spacing * (number >= 100 ? 0.32 : 0.43), weight: .bold, design: .rounded))
-                                .foregroundColor(stone == .black ? .white : Color(hex: 0x14251F)), at: center)
+                                .font(.system(size: spacing * (number >= 100 ? 0.32 : 0.43), weight: .bold))
+                                .foregroundColor(stone == .black ? Color(hex: 0xF4EFE6) : Color(hex: 0x2B2823)), at: center)
                             if lastMove == point && !winningLine.contains(point) {
                                 let diameter = spacing * 0.92
                                 context.stroke(Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2, width: diameter, height: diameter)),
-                                               with: .color(lastMove == point ? theme.danger : theme.boardAccent), lineWidth: max(1.3, spacing * 0.055))
+                                               with: .color(theme.boardAccent), lineWidth: max(1.3, spacing * 0.055))
                             }
                         } else if lastMove == point && !winningLine.contains(point) {
-                            let diameter = max(3, spacing * 0.18)
+                            // The vermilion seal dot marks the last move on either colour.
+                            let diameter = max(3.5, spacing * 0.2)
                             let center = boardGeometry.center(point)
                             context.fill(
                                 Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                                                        width: diameter, height: diameter)),
-                                with: .color(stone == .black ? Color(hex: 0xC9E7AB) : Color(hex: 0x27624B))
+                                with: .color(stone == .black ? Color(hex: 0xF08A6E) : theme.boardAccent)
                             )
                         }
                     }
@@ -85,11 +103,14 @@ struct BoardView: View {
 
                 if let selectedMove, board[selectedMove.row][selectedMove.column] == .empty {
                     let center = boardGeometry.center(selectedMove)
-                    drawStone(previewStone, at: center, spacing: spacing, opacity: 0.55, context: &context)
+                    drawStone(previewStone, at: center, spacing: spacing, opacity: 0.5, context: &context)
                     let diameter = spacing * 0.98
                     let ring = Path(ellipseIn: CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                                                      width: diameter, height: diameter))
-                    context.stroke(ring, with: .color(theme.boardAccent), lineWidth: max(2, spacing * 0.06))
+                    // Dashed, so a previewed point never reads as a placed stone.
+                    context.stroke(ring, with: .color(theme.boardAccent),
+                                   style: StrokeStyle(lineWidth: max(1.6, spacing * 0.06),
+                                                      dash: [spacing * 0.14, spacing * 0.12]))
                 }
 
                 for (move, reason) in forbiddenMoves where board[move.row][move.column] == .empty {
@@ -100,7 +121,7 @@ struct BoardView: View {
                     context.fill(ring, with: .color(theme.surface))
                     context.stroke(ring, with: .color(theme.danger), lineWidth: max(1.2, spacing * 0.045))
                     context.draw(Text(reason.marker)
-                        .font(.system(size: max(8, spacing * 0.38), weight: .heavy, design: .rounded))
+                        .font(.system(size: max(8, spacing * 0.36), weight: .bold, design: .monospaced))
                         .foregroundColor(theme.danger), at: center)
                 }
             }
@@ -147,22 +168,30 @@ struct BoardView: View {
         _ stone: Stone, at center: CGPoint, spacing: CGFloat,
         opacity: Double, context: inout GraphicsContext
     ) {
-        let diameter = spacing * 0.85
+        let diameter = spacing * 0.86
         let rect = CGRect(x: center.x - diameter / 2, y: center.y - diameter / 2,
                           width: diameter, height: diameter)
         let shape = Path(ellipseIn: rect)
-        context.fill(Path(ellipseIn: rect.offsetBy(dx: 0, dy: max(1, spacing * 0.04))),
-                     with: .color(.black.opacity(0.18 * opacity)))
+        // Soft contact shadow, offset down and slightly right.
+        context.fill(Path(ellipseIn: rect.offsetBy(dx: spacing * 0.03, dy: max(1, spacing * 0.06))),
+                     with: .color(.black.opacity(0.22 * opacity)))
         let colors: [Color] = stone == .black
-            ? [Color(hex: 0x455047), Color(hex: 0x111B16)]
-            : [Color(hex: 0xFFFFFF), Color(hex: 0xDEE3D8)]
-        context.fill(shape, with: .linearGradient(
+            ? [Color(hex: 0x504B44), Color(hex: 0x14120F)]
+            : [Color(hex: 0xFFFEFA), Color(hex: 0xE1D9C6)]
+        context.fill(shape, with: .radialGradient(
             Gradient(colors: colors.map { $0.opacity(opacity) }),
-            startPoint: CGPoint(x: rect.minX, y: rect.minY),
-            endPoint: CGPoint(x: rect.maxX, y: rect.maxY)
+            center: CGPoint(x: rect.minX + diameter * 0.36, y: rect.minY + diameter * 0.32),
+            startRadius: 0,
+            endRadius: diameter * 0.8
         ))
+        if stone == .black {
+            // A small sheen, like polished slate.
+            let sheen = CGRect(x: rect.minX + diameter * 0.2, y: rect.minY + diameter * 0.14,
+                               width: diameter * 0.3, height: diameter * 0.18)
+            context.fill(Path(ellipseIn: sheen), with: .color(.white.opacity(0.16 * opacity)))
+        }
         context.stroke(shape,
-                       with: .color((stone == .black ? Color.white.opacity(0.2) : Color.black.opacity(0.22)).opacity(opacity)),
+                       with: .color((stone == .black ? Color.white.opacity(0.12) : Color(hex: 0x8F846E).opacity(0.55)).opacity(opacity)),
                        lineWidth: max(0.6, spacing * 0.025))
     }
 }

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// The whole action surface is a time reserve. Text changes colour at the
-/// fill boundary, keeping its contrast on both the track and the filled area.
+/// The whole action surface is a time reserve: a pine gauge on a paper track that
+/// turns vermilion when time runs low. Text changes colour at the fill boundary,
+/// keeping its contrast on both the track and the filled area.
 struct ReserveMoveButton: View {
     let title: String
     let coordinate: String?
@@ -15,15 +16,15 @@ struct ReserveMoveButton: View {
     @Environment(\.colorScheme) private var scheme
 
     private var theme: GomokuTheme { GomokuTheme(scheme) }
-    private var fill: Color { urgent ? theme.danger : theme.accent }
-    private var fillInk: Color { urgent && theme.isDark ? Color(hex: 0x421E17) : theme.onAccent }
+    private var fill: Color { urgent ? theme.danger : theme.calm }
+    private var fillInk: Color { urgent ? theme.onAccent : theme.onCalm }
     private var progress: CGFloat { CGFloat(min(1, max(0, fraction))) }
 
     private var label: some View {
         HStack(spacing: 10) {
             Image(systemName: busy ? "ellipsis" : enabled ? "checkmark.circle.fill" : "circle.dotted")
             Text(title)
-                .font(.system(.title3, design: .rounded, weight: .semibold))
+                .font(.system(.title3, weight: .semibold))
             if let coordinate {
                 Text(coordinate).font(.system(.subheadline, design: .monospaced, weight: .medium))
             }
@@ -45,7 +46,7 @@ struct ReserveMoveButton: View {
                             fill.frame(width: geometry.size.width * progress)
                             // Quarter marks make the reserve legible at a glance.
                             ForEach(1..<4) { mark in
-                                Rectangle().fill(theme.background.opacity(0.18))
+                                Rectangle().fill(theme.background.opacity(0.35))
                                     .frame(width: 1)
                                     .offset(x: geometry.size.width * CGFloat(mark) / 4)
                             }
@@ -60,9 +61,9 @@ struct ReserveMoveButton: View {
                             }
                         }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(fill.opacity(enabled ? 0.8 : 0.25), lineWidth: 1)
                 }
         }

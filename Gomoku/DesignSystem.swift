@@ -1,26 +1,63 @@
 import SwiftUI
 
-/// Semantic colors shared by every screen, including sheets and the board.
+/// Design language: "먹과 나무" — hanji paper, sumi ink and kaya wood, with a
+/// single vermilion (주홍) seal colour reserved for what matters right now:
+/// primary actions, the last move, forbidden points and low time.
+/// Pine (솔) is the quiet secondary colour for turn and reserve state.
+///
+/// Every property name from the previous theme is kept, so screens that are not
+/// part of this change (achievements, history, results, settings) pick up the new
+/// palette automatically.
 struct GomokuTheme {
     let scheme: ColorScheme
     init(_ scheme: ColorScheme) { self.scheme = scheme }
     var isDark: Bool { scheme == .dark }
 
-    var background: Color { Color(hex: isDark ? 0x121B19 : 0xF5F3EC) }
-    var surface: Color { Color(hex: isDark ? 0x1B2723 : 0xFFFEFA) }
-    var inset: Color { Color(hex: isDark ? 0x24332D : 0xEEEEE5) }
-    var ink: Color { Color(hex: isDark ? 0xF0F2E9 : 0x1C3028) }
-    var secondary: Color { Color(hex: isDark ? 0xADBAB2 : 0x5E6C62) }
-    var accent: Color { Color(hex: isDark ? 0xA9D5BC : 0x27624B) }
-    var onAccent: Color { Color(hex: isDark ? 0x163426 : 0xFFFFFF) }
-    var accentWash: Color { Color(hex: isDark ? 0x2A4135 : 0xE8F0E7) }
-    var border: Color { Color(hex: isDark ? 0x39493F : 0xDADFD3) }
-    var board: Color { Color(hex: isDark ? 0x566553 : 0xDDD0AC) }
-    var boardEdge: Color { Color(hex: isDark ? 0x354438 : 0xC4B38C) }
-    var grid: Color { Color(hex: isDark ? 0x26382B : 0x928362) }
-    var boardLabel: Color { Color(hex: isDark ? 0xF0F0DA : 0x5B503B) }
-    var boardAccent: Color { Color(hex: isDark ? 0xD2F4AA : 0x205A42) }
-    var danger: Color { Color(hex: isDark ? 0xF7B5A7 : 0xA13C2F) }
+    // Paper (한지) and ink (먹)
+    var background: Color { Color(hex: isDark ? 0x1B1916 : 0xF4EFE6) }
+    var surface: Color { Color(hex: isDark ? 0x25221E : 0xFBF8F1) }
+    var inset: Color { Color(hex: isDark ? 0x2F2B25 : 0xEBE4D4) }
+    var ink: Color { Color(hex: isDark ? 0xF0EADC : 0x2B2823) }
+    var secondary: Color { Color(hex: isDark ? 0xB5AC99 : 0x6B6558) }
+    var border: Color { Color(hex: isDark ? 0x413B32 : 0xDDD3BF) }
+
+    // Vermilion seal (주홍): the one accent
+    var accent: Color { Color(hex: isDark ? 0xE07A5F : 0xB8432F) }
+    var onAccent: Color { Color(hex: isDark ? 0x2A140D : 0xFFF8EE) }
+    var accentWash: Color { Color(hex: isDark ? 0x3A2620 : 0xF3DFD6) }
+    var danger: Color { Color(hex: isDark ? 0xF0917A : 0xA8362A) }
+
+    // Pine (솔): calm state such as the active turn and a healthy time reserve
+    var calm: Color { Color(hex: isDark ? 0x86AE94 : 0x3F5B4B) }
+    var onCalm: Color { Color(hex: isDark ? 0x14201A : 0xFFF8EE) }
+    var calmWash: Color { Color(hex: isDark ? 0x25302A : 0xE1E8DE) }
+
+    // Kaya wood board (카야). The board stays light wood in Dark mode, only dimmer.
+    var board: Color { Color(hex: isDark ? 0xB5945A : 0xE6C892) }
+    var boardEdge: Color { Color(hex: isDark ? 0x8A6E3F : 0xC7A468) }
+    var grid: Color { Color(hex: isDark ? 0x4A3A22 : 0x5B4630) }
+    var boardLabel: Color { Color(hex: isDark ? 0x2E2416 : 0x5E4A2E) }
+    var boardAccent: Color { Color(hex: isDark ? 0x8C2818 : 0xB8432F) }
+}
+
+/// Radii step down with the size of the thing they round.
+enum GomokuRadius {
+    static let card: CGFloat = 24
+    static let control: CGFloat = 14
+    static let tile: CGFloat = 12
+    static let chip: CGFloat = 8
+}
+
+extension Font {
+    /// Serif voice for titles and section names.
+    static func gomokuTitle(_ style: Font.TextStyle, weight: Font.Weight = .semibold) -> Font {
+        .system(style, design: .serif, weight: weight)
+    }
+
+    /// Fixed-width digits so clocks never jitter while time runs down.
+    static func gomokuClock(_ style: Font.TextStyle, weight: Font.Weight = .medium) -> Font {
+        .system(style, design: .monospaced, weight: weight)
+    }
 }
 
 extension Color {
@@ -46,11 +83,40 @@ struct SurfaceCard<Content: View>: View {
     var body: some View {
         content
             .padding(22)
-            .background(GomokuTheme(scheme).surface, in: RoundedRectangle(cornerRadius: 26))
+            .background(GomokuTheme(scheme).surface,
+                        in: RoundedRectangle(cornerRadius: GomokuRadius.card, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 26)
-                    .strokeBorder(GomokuTheme(scheme).border.opacity(0.65), lineWidth: 1)
+                RoundedRectangle(cornerRadius: GomokuRadius.card, style: .continuous)
+                    .strokeBorder(GomokuTheme(scheme).border, lineWidth: 1)
             }
+    }
+}
+
+/// The 낙관 (seal) used as the app mark: 五目 stamped in vermilion.
+struct HankoSeal: View {
+    var size: CGFloat = 42
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let theme = GomokuTheme(scheme)
+        let radius = size * 0.2
+        RoundedRectangle(cornerRadius: radius, style: .continuous)
+            .fill(theme.accent)
+            .frame(width: size, height: size)
+            .overlay {
+                VStack(spacing: -size * 0.03) {
+                    Text("五")
+                    Text("目")
+                }
+                .font(.system(size: size * 0.36, weight: .bold, design: .serif))
+                .foregroundStyle(theme.onAccent)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: max(2, radius - 3), style: .continuous)
+                    .strokeBorder(theme.onAccent.opacity(0.4), lineWidth: 1)
+                    .padding(3)
+            }
+            .accessibilityHidden(true)
     }
 }
 
@@ -59,25 +125,30 @@ struct StoneDisc: View {
     var size: CGFloat = 28
 
     var body: some View {
+        let black = stone == .black
         Circle()
-            .fill(LinearGradient(
-                colors: stone == .black
-                    ? [Color(hex: 0x465149), Color(hex: 0x111B16)]
-                    : [Color(hex: 0xFFFFFF), Color(hex: 0xDFE4D9)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
+            .fill(RadialGradient(
+                colors: black
+                    ? [Color(hex: 0x504B44), Color(hex: 0x14120F)]
+                    : [Color(hex: 0xFFFEFA), Color(hex: 0xE1D9C6)],
+                center: UnitPoint(x: 0.34, y: 0.3),
+                startRadius: 0,
+                endRadius: size * 0.8
             ))
             .overlay {
                 Circle().strokeBorder(
-                    stone == .black ? Color.white.opacity(0.2) : Color.black.opacity(0.16),
+                    black ? Color.white.opacity(0.14) : Color(hex: 0x8F846E).opacity(0.55),
                     lineWidth: 1
                 )
             }
-            .shadow(color: .black.opacity(0.14), radius: 2, x: 0, y: 2)
+            .shadow(color: .black.opacity(0.18), radius: max(1, size * 0.07), x: 0, y: max(1, size * 0.06))
             .frame(width: size, height: size)
             .accessibilityHidden(true)
     }
 }
 
+/// Primary actions are vermilion, secondary actions sit on paper, and the final
+/// boss is oxblood with a vermilion edge.
 struct GomokuButtonStyle: ButtonStyle {
     var primary = true
     var boss = false
@@ -86,14 +157,21 @@ struct GomokuButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         let theme = GomokuTheme(scheme)
+        let shape = RoundedRectangle(cornerRadius: GomokuRadius.control, style: .continuous)
+        let foreground: Color = boss ? Color(hex: 0xFFEFE6) : primary ? theme.onAccent : theme.ink
+        let fill: Color = boss ? Color(hex: 0x3A1512) : primary ? theme.accent : theme.inset
+        let edge: Color = boss ? Color(hex: 0xE07A5F).opacity(0.85)
+            : primary ? Color.black.opacity(0.14) : theme.border
         configuration.label
-            .font(.system(.body, design: .rounded, weight: .semibold))
-            .frame(maxWidth: .infinity, minHeight: 50)
+            .font(.system(.body, weight: .semibold))
+            .frame(maxWidth: .infinity, minHeight: 52)
             .padding(.horizontal, 14)
-            .foregroundStyle(boss ? .white : primary ? theme.onAccent : theme.ink)
-            .background(boss ? Color(hex: 0xA51F35) : primary ? theme.accent : theme.inset, in: RoundedRectangle(cornerRadius: 16))
-            .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.4)
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .foregroundStyle(foreground)
+            .background(fill, in: shape)
+            .overlay { shape.strokeBorder(edge, lineWidth: boss ? 1.5 : 1) }
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
+            .opacity(enabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
+            .contentShape(shape)
     }
 }
 
@@ -104,19 +182,22 @@ struct QuietIconButton: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: GomokuRadius.tile + 1, style: .continuous)
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 19, weight: .medium))
                 .frame(width: 46, height: 46)
                 .foregroundStyle(GomokuTheme(scheme).ink)
-                .background(GomokuTheme(scheme).surface, in: Circle())
-                .overlay { Circle().strokeBorder(GomokuTheme(scheme).border, lineWidth: 1) }
+                .background(GomokuTheme(scheme).surface, in: shape)
+                .overlay { shape.strokeBorder(GomokuTheme(scheme).border, lineWidth: 1) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
     }
 }
 
+/// Selected tiles are washed in vermilion and outlined; the label stays ink so
+/// small text keeps its contrast.
 struct SelectionTile<Content: View>: View {
     let selected: Bool
     let action: () -> Void
@@ -131,17 +212,16 @@ struct SelectionTile<Content: View>: View {
 
     var body: some View {
         let theme = GomokuTheme(scheme)
+        let shape = RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous)
         Button(action: action) {
             content
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(12)
-                .foregroundStyle(selected ? theme.accent : theme.secondary)
-                .background(selected ? theme.accentWash : theme.inset.opacity(0.6),
-                            in: RoundedRectangle(cornerRadius: 16))
+                .foregroundStyle(selected ? theme.ink : theme.secondary)
+                .background(selected ? theme.accentWash : theme.inset.opacity(0.6), in: shape)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 16)
-                        .strokeBorder(selected ? theme.accent : theme.border.opacity(0.45),
-                                      lineWidth: selected ? 1.6 : 1)
+                    shape.strokeBorder(selected ? theme.accent : theme.border.opacity(0.6),
+                                       lineWidth: selected ? 1.5 : 1)
                 }
         }
         .buttonStyle(.plain)
@@ -149,6 +229,7 @@ struct SelectionTile<Content: View>: View {
     }
 }
 
+/// Section title with a hairline rule, so a long setup card reads as separate steps.
 struct SectionCaption: View {
     let number: String
     let title: String
@@ -157,10 +238,14 @@ struct SectionCaption: View {
         HStack(spacing: 9) {
             Text(number)
                 .font(.system(.caption, design: .monospaced, weight: .medium))
-                .foregroundStyle(GomokuTheme(scheme).secondary)
+                .foregroundStyle(GomokuTheme(scheme).accent)
             Text(title)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .font(.gomokuTitle(.subheadline))
                 .foregroundStyle(GomokuTheme(scheme).ink)
+            Rectangle()
+                .fill(GomokuTheme(scheme).border)
+                .frame(height: 1)
+                .accessibilityHidden(true)
         }
     }
 }
@@ -174,22 +259,24 @@ struct SmallBadge: View {
             if let symbol { Image(systemName: symbol) }
             Text(text)
         }
-        .font(.system(.caption, design: .rounded, weight: .medium))
+        .font(.system(.caption, weight: .medium))
         .foregroundStyle(GomokuTheme(scheme).secondary)
-        .padding(.horizontal, 11)
-        .padding(.vertical, 7)
-        .background(GomokuTheme(scheme).inset, in: Capsule())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(GomokuTheme(scheme).inset,
+                    in: RoundedRectangle(cornerRadius: GomokuRadius.chip, style: .continuous))
     }
 }
 
-/// A decorative study of five stones; actual play always uses the 15×15 board.
+/// A decorative study of five stones on a kaya board; actual play always uses the 15×15 board.
 struct WelcomeArtwork: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         let theme = GomokuTheme(scheme)
+        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         ZStack {
-            RoundedRectangle(cornerRadius: 44)
-                .fill(theme.inset)
+            shape.fill(theme.board)
+            shape.strokeBorder(theme.boardEdge, lineWidth: 2)
             Canvas { context, size in
                 let step = size.width / 8
                 var grid = Path()
@@ -200,10 +287,10 @@ struct WelcomeArtwork: View {
                     grid.move(to: CGPoint(x: offset, y: step))
                     grid.addLine(to: CGPoint(x: offset, y: size.height - step))
                 }
-                context.stroke(grid, with: .color(theme.border), lineWidth: 1)
+                context.stroke(grid, with: .color(theme.grid.opacity(0.85)), lineWidth: 1)
                 let dot = Path(ellipseIn: CGRect(x: size.width / 2 - 3, y: size.height / 2 - 3,
                                                 width: 6, height: 6))
-                context.fill(dot, with: .color(theme.secondary))
+                context.fill(dot, with: .color(theme.grid))
             }
             GeometryReader { geo in
                 let step = geo.size.width / 8
@@ -211,7 +298,7 @@ struct WelcomeArtwork: View {
                     StoneDisc(stone: index.isMultiple(of: 2) ? .black : .white, size: step * 0.83)
                         .position(x: step * CGFloat(index + 2), y: step * CGFloat(index + 2))
                 }
-                Circle().stroke(theme.accent, lineWidth: 2)
+                Circle().stroke(theme.boardAccent, lineWidth: 2)
                     .frame(width: step * 0.98, height: step * 0.98)
                     .position(x: step * 6, y: step * 6)
             }
