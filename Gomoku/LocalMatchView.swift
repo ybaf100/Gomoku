@@ -468,7 +468,7 @@ struct LocalMatchView: View {
                     }
                     Spacer()
                     Text(L10n.choose("혼자 두기", "Local Play", language))
-                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .font(.gomokuTitle(.title2, weight: .bold))
                     Spacer()
                     Color.clear.frame(width: 46, height: 46)
                 }
@@ -584,8 +584,8 @@ struct LocalMatchView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(12)
-            .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 2 : 1))
+            .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 1.5 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(bottomIsBlack ? "local.black.bottom" : "local.black.top")
@@ -619,8 +619,8 @@ struct LocalMatchView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 48)
                 .padding(.horizontal, 3)
-                .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 2 : 1))
+                .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 1.5 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("local.format.\(format.rawValue)")
@@ -678,8 +678,8 @@ struct LocalMatchView: View {
             .opacity(timed ? 1 : 0.45)
         }
         .padding(14)
-        .background(timed ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(timed ? theme.accent : theme.border))
+        .background(timed ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(timed ? theme.accent : theme.border))
     }
 
     private func matchScreen(size: CGSize) -> some View {
@@ -734,7 +734,7 @@ struct LocalMatchView: View {
                 VStack(spacing: 12) {
                     if game.series.isComplete {
                         Text(seriesVictoryTitle)
-                            .font(.system(.title2, design: .rounded, weight: .bold))
+                            .font(.gomokuTitle(.title2, weight: .bold))
                     }
                     Text(game.resultTitle(language: language))
                         .font(.headline)
@@ -765,7 +765,8 @@ struct LocalMatchView: View {
                 }
                 .padding(18)
                 .frame(maxWidth: 440)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22))
+                .background(theme.surface, in: RoundedRectangle(cornerRadius: GomokuRadius.card, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: GomokuRadius.card, style: .continuous).strokeBorder(theme.border, lineWidth: 1) }
                 .padding(24)
             }
         }
@@ -786,7 +787,7 @@ struct LocalMatchView: View {
                     }
                     Text(L10n.stone(stone, language: language) + " · " + (active ? L10n.text("place", language) : L10n.choose("대기", "Wait", language)))
                         .font(.caption)
-                        .foregroundStyle(active ? theme.accent : theme.secondary)
+                        .foregroundStyle(active ? theme.calm : theme.secondary)
                     Text(statsText(stats))
                         .font(.caption2)
                         .foregroundStyle(theme.secondary)
@@ -804,11 +805,11 @@ struct LocalMatchView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier(bottomPlayer ? "local.series.bottom" : "local.series.top")
                 Text(game.formattedTime(for: stone))
-                    .font(.system(.title, design: .rounded, weight: .bold))
+                    .font(.gomokuClock(.title, weight: .semibold))
                     .minimumScaleFactor(0.65)
                     .lineLimit(1)
                     .monospacedDigit()
-                    .foregroundStyle(low ? theme.danger : active ? theme.accent : theme.ink)
+                    .foregroundStyle(low ? theme.danger : active ? theme.calm : theme.ink)
                     .padding(.horizontal, 5)
                     .background(low ? theme.danger.opacity(0.13) : Color.clear,
                                 in: RoundedRectangle(cornerRadius: 8))
@@ -849,8 +850,8 @@ struct LocalMatchView: View {
             }
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 22)
-                .strokeBorder(low ? theme.danger : active ? theme.accent.opacity(0.75) : Color.clear, lineWidth: 2)
+            RoundedRectangle(cornerRadius: GomokuRadius.card, style: .continuous)
+                .strokeBorder(low ? theme.danger : active ? theme.calm.opacity(0.85) : Color.clear, lineWidth: 2)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(bottomPlayer ? "local.player.bottom" : "local.player.top")

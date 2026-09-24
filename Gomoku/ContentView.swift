@@ -120,17 +120,13 @@ struct ContentView: View {
                 }
                 .accessibilityIdentifier("backHome")
             } else {
-                ZStack {
-                    StoneDisc(stone: .white, size: 25).offset(x: 7, y: -4)
-                    StoneDisc(stone: .black, size: 25).offset(x: -6, y: 5)
-                }
-                .frame(width: 42, height: 42)
+                HankoSeal(size: 42)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("GOMOKU")
-                    .font(.system(.headline, design: .rounded, weight: .bold))
-                    .tracking(2.5)
+                    .font(.gomokuTitle(.headline, weight: .bold))
+                    .tracking(3)
                 Text(L10n.text(game.isGameActive ? "matchSubtitle" : "brandSubtitle", language))
                     .font(.caption)
                     .foregroundStyle(theme.secondary)
@@ -195,14 +191,16 @@ struct ContentView: View {
     private func hero(wide: Bool) -> some View {
         VStack(alignment: wide ? .leading : .center, spacing: wide ? 22 : 12) {
             HStack(spacing: 7) {
-                Circle().fill(theme.accent).frame(width: 6, height: 6)
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                    .fill(theme.accent).frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
                 Text(L10n.text("quietPlay", language))
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .tracking(language == .english ? 2 : 1)
+                    .font(.system(.caption, weight: .semibold))
+                    .tracking(language == .english ? 1.6 : 0.8)
                     .foregroundStyle(theme.accent)
             }
             Text(L10n.text(wide ? "heroTitle" : "heroTitleCompact", language))
-                .font(.system(wide ? .largeTitle : .title, design: .serif, weight: .medium))
+                .font(.system(wide ? .largeTitle : .title, design: .serif, weight: .semibold))
                 .lineSpacing(8)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(wide ? .leading : .center)
@@ -236,9 +234,13 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack {
                         Text(L10n.text("newMatch", language))
-                            .font(.system(.title2, design: .rounded, weight: .bold))
+                            .font(.gomokuTitle(.title2, weight: .bold))
                         Spacer()
-                        Image(systemName: "sparkle").foregroundStyle(theme.accent)
+                        // The same ring-and-dot that marks the last move on the board.
+                        Circle().strokeBorder(theme.accent, lineWidth: 1.5)
+                            .frame(width: 16, height: 16)
+                            .overlay { Circle().fill(theme.accent).frame(width: 6, height: 6) }
+                            .accessibilityHidden(true)
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -322,8 +324,7 @@ struct ContentView: View {
                                 SelectionTile(selected: game.timeControl == control, action: { game.timeControl = control }) {
                                     VStack(spacing: 6) {
                                         Text(timeControlClockLabel(control))
-                                            .font(.system(.title3, design: .rounded, weight: .semibold))
-                                            .monospacedDigit()
+                                            .font(.gomokuClock(.title3, weight: .semibold))
                                         Text(L10n.timeControl(control, language: language))
                                             .font(.caption)
                                             .multilineTextAlignment(.center)
@@ -346,7 +347,7 @@ struct ContentView: View {
                             Spacer()
                             Text(game.difficulty == .veryHard ? L10n.choose("최종 보스에 도전", "Challenge the final boss", language) : L10n.text("startGame", language))
                             Spacer()
-                            Image(systemName: "arrow.up.right")
+                            StoneDisc(stone: .black, size: 22)
                         }
                     }
                     .buttonStyle(GomokuButtonStyle(boss: game.difficulty == .veryHard))
@@ -362,6 +363,8 @@ struct ContentView: View {
             Button { showLocalMatch = true } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "person.2.fill")
+                        .frame(width: 40, height: 40)
+                        .background(theme.inset, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(L10n.choose("혼자 두기", "Local Play", language))
                             .font(.subheadline.bold())
@@ -375,9 +378,9 @@ struct ContentView: View {
                 }
                 .foregroundStyle(theme.ink)
                 .padding(.horizontal, 12)
-                .frame(minHeight: 58)
-                .background(theme.surface, in: RoundedRectangle(cornerRadius: 18))
-                .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(theme.border, lineWidth: 1) }
+                .frame(minHeight: 64)
+                .background(theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(theme.border, lineWidth: 1) }
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("openLocalMatch")
@@ -546,7 +549,7 @@ struct ContentView: View {
                 Text(L10n.difficulty(game.difficulty, language: language,
                                      adaptiveSkill: game.difficulty == .adaptive ? game.adaptiveSkill : nil))
             }
-            .font(.system(.caption2, design: .rounded, weight: .medium))
+            .font(.system(.caption2, weight: .medium))
             .foregroundStyle(theme.secondary)
             .padding(.horizontal, 8)
             if game.showsForbiddenMoves && !game.forbiddenMoves.isEmpty {
@@ -575,20 +578,19 @@ struct ContentView: View {
                 Spacer(minLength: 2)
                 if active {
                     Image(systemName: "smallcircle.filled.circle")
-                        .foregroundStyle(theme.accent)
+                        .foregroundStyle(theme.calm)
                         .font(.caption)
                         .accessibilityLabel(L10n.text("activeTurn", language))
                 }
             }
             Text(game.formattedTime(for: stone))
-                .font(.system(.title2, design: .rounded, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : active ? theme.accent : theme.ink)
+                .font(.gomokuClock(.title2, weight: .medium))
+                .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : active ? theme.calm : theme.ink)
                 .accessibilityIdentifier("clock.\(stone.rawValue)")
             GeometryReader { geometry in
                 Capsule().fill(theme.border.opacity(0.5))
                     .overlay(alignment: .leading) {
-                        Capsule().fill(game.isTimeLow(for: stone) ? theme.danger : theme.accent)
+                        Capsule().fill(game.isTimeLow(for: stone) ? theme.danger : theme.calm)
                             .frame(width: geometry.size.width * game.timeFraction(for: stone))
                     }
             }
@@ -597,10 +599,10 @@ struct ContentView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(active ? theme.accentWash : theme.surface, in: RoundedRectangle(cornerRadius: 20))
+        .background(active ? theme.calmWash : theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(active ? theme.accent.opacity(0.6) : theme.border, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(active ? theme.calm.opacity(0.8) : theme.border, lineWidth: active ? 1.5 : 1)
         }
     }
 
@@ -613,7 +615,7 @@ struct ContentView: View {
                     .foregroundStyle(theme.accent)
             }
             Text(game.turnTitle(language: language))
-                .font(.system(.headline, design: .rounded))
+                .font(.gomokuTitle(.headline))
                 .accessibilityIdentifier("turnStatus")
         }
         .frame(maxWidth: .infinity)
@@ -648,7 +650,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
                 Text(L10n.text("remainingTime", language)).font(.caption)
                 Text(game.formattedTime(for: stone))
-                    .font(.system(.title3, design: .rounded, weight: .semibold)).monospacedDigit()
+                    .font(.gomokuClock(.title3, weight: .medium))
                     .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : theme.ink)
             }
             .foregroundStyle(theme.secondary)
