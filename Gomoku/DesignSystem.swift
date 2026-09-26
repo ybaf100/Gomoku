@@ -196,6 +196,45 @@ struct QuietIconButton: View {
     }
 }
 
+/// A compact chip for vertically scrollable adaptive grids (stone, difficulty,
+/// time). Pass `width: nil` to let the chip flex to fill its grid cell. The chip is shared
+/// by the home screen and the local-play setup screen so every choice in the app
+/// reads as one family of controls.
+struct RailChip<Content: View>: View {
+    let selected: Bool
+    var width: CGFloat? = 112
+    let action: () -> Void
+    private let content: Content
+    @Environment(\.colorScheme) private var scheme
+
+    init(selected: Bool, width: CGFloat? = 112, action: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.selected = selected
+        self.width = width
+        self.action = action
+        self.content = content()
+    }
+
+    var body: some View {
+        let theme = GomokuTheme(scheme)
+        let shape = RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous)
+        Button(action: action) {
+            content
+                .frame(maxWidth: width == nil ? .infinity : nil)
+                .frame(width: width)
+                .frame(minHeight: 82)
+                .padding(10)
+                .foregroundStyle(selected ? theme.ink : theme.secondary)
+                .background(selected ? theme.accentWash : theme.inset.opacity(0.6), in: shape)
+                .overlay {
+                    shape.strokeBorder(selected ? theme.accent : theme.border.opacity(0.6),
+                                       lineWidth: selected ? 1.5 : 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
 /// Selected tiles are washed in vermilion and outlined; the label stays ink so
 /// small text keeps its contrast.
 struct SelectionTile<Content: View>: View {

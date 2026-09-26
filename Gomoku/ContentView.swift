@@ -108,7 +108,7 @@ struct ContentView: View {
     }
 
     private var appHeader: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             if game.isGameActive {
                 QuietIconButton(title: L10n.text("backHome", language), symbol: "arrow.left") {
                     if game.result == nil {
@@ -120,18 +120,46 @@ struct ContentView: View {
                 }
                 .accessibilityIdentifier("backHome")
             } else {
-                HankoSeal(size: 42)
+                HankoSeal(size: 36)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text("GOMOKU")
-                    .font(.gomokuTitle(.headline, weight: .bold))
-                    .tracking(3)
+                    .font(.gomokuTitle(.subheadline, weight: .bold))
+                    .tracking(2.5)
                 Text(L10n.text(game.isGameActive ? "matchSubtitle" : "brandSubtitle", language))
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(theme.secondary)
             }
+
+            if !game.isGameActive {
+                if game.achievements.currentStreak > 0 {
+                    StreakBadge(count: game.achievements.currentStreak, language: language)
+                        .scaleEffect(0.72, anchor: .leading)
+                        .frame(width: 76, height: 34, alignment: .leading)
+                }
+                if let title = game.achievements.title(language) {
+                    Label(title, systemImage: "seal.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(theme.accent)
+                        .lineLimit(1)
+                }
+            }
+
             Spacer(minLength: 4)
+
+            if !game.isGameActive {
+                Button { showSettings = true } label: {
+                    Image(systemName: appearance.symbol)
+                        .font(.system(size: 15, weight: .medium))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.ink)
+                .background(theme.inset, in: Circle())
+                .accessibilityLabel(L10n.text("appearance", language) + " · " + L10n.appearance(appearance, language: language))
+                .accessibilityIdentifier("appearanceShortcut")
+            }
             QuietIconButton(title: L10n.choose("도전과제", "Achievements", language), symbol: "trophy") {
                 focusUnlocks = false
                 showAchievements = true
@@ -153,10 +181,15 @@ struct ContentView: View {
             }
             .accessibilityIdentifier("openSettings")
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
         .frame(maxWidth: 1280)
         .frame(maxWidth: .infinity)
+        .overlay(alignment: .bottom) {
+            if !game.isGameActive {
+                Rectangle().fill(theme.border).frame(height: 1)
+            }
+        }
     }
 
     private var setupScreen: some View {
@@ -219,128 +252,100 @@ struct ContentView: View {
                 SmallBadge(text: L10n.text("renju", language))
                 SmallBadge(text: L10n.text("offline", language), symbol: "leaf")
             }
-            if game.achievements.currentStreak > 0 {
-                StreakBadge(count: game.achievements.currentStreak, language: language)
-            }
-            if let title = game.achievements.title(language) {
-                Label(title, systemImage: "seal.fill").font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
-            }
         }
     }
 
     private var setupControls: some View {
-        VStack(spacing: 16) {
-            SurfaceCard {
-                VStack(alignment: .leading, spacing: 22) {
-                    HStack {
-                        Text(L10n.text("newMatch", language))
-                            .font(.gomokuTitle(.title2, weight: .bold))
-                        Spacer()
-                        // The same ring-and-dot that marks the last move on the board.
-                        Circle().strokeBorder(theme.accent, lineWidth: 1.5)
-                            .frame(width: 16, height: 16)
-                            .overlay { Circle().fill(theme.accent).frame(width: 6, height: 6) }
-                            .accessibilityHidden(true)
-                    }
+        SurfaceCard {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack {
+                    Text(L10n.text("newMatch", language))
+                        .font(.gomokuTitle(.title2, weight: .bold))
+                    Spacer()
+                    // The same ring-and-dot that marks the last move on the board.
+                    Circle().strokeBorder(theme.accent, lineWidth: 1.5)
+                        .frame(width: 16, height: 16)
+                        .overlay { Circle().fill(theme.accent).frame(width: 6, height: 6) }
+                        .accessibilityHidden(true)
+                }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionCaption(number: "01", title: L10n.text("yourStone", language))
-                        if game.difficulty.automaticColour {
-                            Label(L10n.choose(game.difficulty == .adaptive ? "흑백 자동 교대" : "흑백 무작위 배정",
-                                              game.difficulty == .adaptive ? "Alternating colours" : "Random colour assignment", language), systemImage: "shuffle")
-                                .font(.subheadline.bold()).foregroundStyle(theme.accent)
-                                .accessibilityIdentifier("automaticColour")
-                        } else {
-                        HStack(spacing: 10) {
-                            stoneChoice(.black)
-                            stoneChoice(.white)
-                        }
-                        SelectionTile(selected: game.stoneSelection == .random, action: { game.stoneSelection = .random }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "shuffle").font(.title3).frame(width: 30)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(L10n.text("randomStone", language)).font(.subheadline.bold())
-                                    Text(L10n.text(game.difficulty == .adaptive ? "alternatingStoneHelp" : "randomStoneHelp", language))
-                                        .font(.caption)
-                                }
-                                Spacer(minLength: 0)
-                                if game.stoneSelection == .random {
-                                    Image(systemName: "checkmark.circle.fill").font(.caption)
-                                }
-                            }
-                        }
-                        .accessibilityIdentifier("stone.random")
-                        }
-                        if game.difficulty == .adaptive {
-                            Text(L10n.text("nextStone", language) + " · " + L10n.stone(game.nextAdaptiveStone, language: language))
-                                .font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
-                                .accessibilityIdentifier("nextStone")
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionCaption(number: "01", title: L10n.text("yourStone", language))
+                    if game.difficulty.automaticColour {
+                        Label(L10n.choose(game.difficulty == .adaptive ? "흑백 자동 교대" : "흑백 무작위 배정",
+                                          game.difficulty == .adaptive ? "Alternating colours" : "Random colour assignment", language), systemImage: "shuffle")
+                            .font(.subheadline.bold()).foregroundStyle(theme.accent)
+                            .accessibilityIdentifier("automaticColour")
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 300 : 132), spacing: 10)], spacing: 10) {
+                            stoneChip(.black, width: nil)
+                            stoneChip(.white, width: nil)
+                            randomStoneChip(width: nil)
                         }
                     }
+                    if game.difficulty == .adaptive {
+                        Text(L10n.text("nextStone", language) + " · " + L10n.stone(game.nextAdaptiveStone, language: language))
+                            .font(.caption.weight(.semibold)).foregroundStyle(theme.accent)
+                            .accessibilityIdentifier("nextStone")
+                    }
+                }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionCaption(number: "02", title: L10n.text("aiDifficulty", language))
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 9) {
-                            ForEach(AIDifficulty.allCases.filter { $0 != .veryHard }) { level in
-                                SelectionTile(selected: game.difficulty == level, action: { game.difficulty = level }) {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: difficultySymbol(level))
-                                        Text(L10n.difficulty(level, language: language))
-                                            .font(.subheadline.weight(.semibold))
-                                        Spacer(minLength: 0)
-                                        if game.difficulty == level {
-                                            Image(systemName: "checkmark").font(.caption.bold())
-                                        }
-                                    }
-                                }
-                                .accessibilityIdentifier("difficulty.\(level.rawValue)")
-                            }
-                        }
-                        BossDifficultyCard(progress: game.achievements, selected: game.difficulty == .veryHard, language: language) {
-                            if game.achievements.bossUnlocked { game.difficulty = .veryHard }
-                            else { focusUnlocks = true; showAchievements = true }
-                        }
-                        if game.difficulty == .adaptive {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text(L10n.text("adaptiveCurrent", language))
-                                    Spacer()
-                                    Text("\(game.adaptiveSkill) / 100").monospacedDigit()
-                                }
-                                .font(.caption.weight(.semibold))
-                                ProgressView(value: Double(game.adaptiveSkill), total: 100).tint(theme.accent)
-                                Text(L10n.text("adaptiveDescription", language))
-                                    .font(.caption)
-                                    .foregroundStyle(theme.secondary)
-                            }
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionCaption(number: "02", title: L10n.text("aiDifficulty", language))
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 300 : 140), spacing: 10)], spacing: 10) {
+                        ForEach(AIDifficulty.allCases.filter { $0 != .veryHard }) { level in
+                            difficultyChip(level, width: nil)
                         }
                     }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        SectionCaption(number: "03", title: L10n.text("timeControl", language))
-                        let columns = typeSize.isAccessibilitySize ? 1 : 4
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
-                            ForEach(TimeControl.allCases) { control in
-                                SelectionTile(selected: game.timeControl == control, action: { game.timeControl = control }) {
-                                    VStack(spacing: 6) {
-                                        Text(timeControlClockLabel(control))
-                                            .font(.gomokuClock(.title3, weight: .semibold))
-                                        Text(L10n.timeControl(control, language: language))
-                                            .font(.caption)
-                                            .multilineTextAlignment(.center)
-                                    }
-                                }
-                                .accessibilityIdentifier("time.\(control.rawValue)")
+                    BossDifficultyCard(progress: game.achievements, selected: game.difficulty == .veryHard, language: language) {
+                        if game.achievements.bossUnlocked { game.difficulty = .veryHard }
+                        else { focusUnlocks = true; showAchievements = true }
+                    }
+                    if game.difficulty == .adaptive {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(L10n.text("adaptiveCurrent", language))
+                                Spacer()
+                                Text("\(game.adaptiveSkill) / 100").monospacedDigit()
                             }
-                        }
-                        Text(L10n.timeSubtitle(game.timeControl, language: language))
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(theme.accent)
-                            .accessibilityIdentifier("clockRule")
-                        Text(L10n.text(game.timeControl == .unlimited ? "noClock" : game.timeControl == .blitz ? "blitzHelp" : "timeRefillHelp", language))
-                            .font(.caption)
-                            .foregroundStyle(theme.secondary)
+                            ProgressView(value: Double(game.adaptiveSkill), total: 100).tint(theme.accent)
+                            Text(L10n.text("adaptiveDescription", language))
+                                .font(.caption)
+                                .foregroundStyle(theme.secondary)
+                        }
                     }
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionCaption(number: "03", title: L10n.text("timeControl", language))
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 300 : 128), spacing: 10)], spacing: 10) {
+                        ForEach(TimeControl.allCases) { control in
+                            timeChip(control, width: nil)
+                        }
+                    }
+                    Text(L10n.timeSubtitle(game.timeControl, language: language))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.accent)
+                        .accessibilityIdentifier("clockRule")
+                    Text(L10n.text(game.timeControl == .unlimited ? "noClock" : game.timeControl == .blitz ? "blitzHelp" : "timeRefillHelp", language))
+                        .font(.caption)
+                        .foregroundStyle(theme.secondary)
+                }
+
+                HStack(spacing: 10) {
+                    Button { showLocalMatch = true } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "person.2.fill").font(.system(size: 17))
+                            Text(L10n.choose("혼자 두기", "Local", language)).font(.caption2.bold())
+                        }
+                    }
+                    .buttonStyle(GomokuButtonStyle(primary: false))
+                    .frame(width: 86)
+                    .accessibilityIdentifier("openLocalMatch")
+                    .accessibilityLabel(L10n.choose("혼자 두기", "Local Play", language))
+                    .accessibilityHint(L10n.choose("한 iPad에서 위·아래로 마주 보고 플레이 · 세로 모드 전용",
+                                                   "Face-to-face on one iPad · Portrait only", language))
 
                     Button { game.startGame() } label: {
                         HStack {
@@ -352,74 +357,68 @@ struct ContentView: View {
                     }
                     .buttonStyle(GomokuButtonStyle(boss: game.difficulty == .veryHard))
                     .accessibilityIdentifier("startGame")
-                    Text(L10n.text("startHint", language))
-                        .font(.caption)
-                        .foregroundStyle(theme.secondary)
-                        .frame(maxWidth: .infinity)
-                        .multilineTextAlignment(.center)
                 }
+                Text(L10n.text("startHint", language))
+                    .font(.caption)
+                    .foregroundStyle(theme.secondary)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
             }
-
-            Button { showLocalMatch = true } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "person.2.fill")
-                        .frame(width: 40, height: 40)
-                        .background(theme.inset, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(L10n.choose("혼자 두기", "Local Play", language))
-                            .font(.subheadline.bold())
-                        Text(L10n.choose("한 iPad에서 위·아래로 마주 보고 플레이 · 세로 모드 전용",
-                                         "Face-to-face on one iPad · Portrait only", language))
-                            .font(.caption)
-                            .foregroundStyle(theme.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right").font(.caption.bold())
-                }
-                .foregroundStyle(theme.ink)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 64)
-                .background(theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay { RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(theme.border, lineWidth: 1) }
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("openLocalMatch")
-
-            Button { showSettings = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: appearance.symbol)
-                    Text(L10n.text("appearance", language))
-                    Spacer()
-                    Text(L10n.appearance(appearance, language: language))
-                    Image(systemName: "chevron.right").font(.caption.bold())
-                }
-                .font(.subheadline)
-                .foregroundStyle(theme.secondary)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("appearanceShortcut")
         }
     }
 
-    private func stoneChoice(_ stone: Stone) -> some View {
+    private func stoneChip(_ stone: Stone, width: CGFloat?) -> some View {
         let choice: StoneSelection = stone == .black ? .black : .white
-        return SelectionTile(selected: game.stoneSelection == choice, action: { game.stoneSelection = choice }) {
-            HStack(spacing: 12) {
-                StoneDisc(stone: stone, size: 30)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.stone(stone, language: language)).font(.subheadline.bold())
-                    Text(L10n.text(stone == .black ? "firstMove" : "secondMove", language)).font(.caption)
-                }
-                Spacer(minLength: 0)
-                if game.stoneSelection == choice {
-                    Image(systemName: "checkmark.circle.fill").font(.caption)
-                }
+        return RailChip(selected: game.stoneSelection == choice, width: width, action: { game.stoneSelection = choice }) {
+            VStack(spacing: 6) {
+                StoneDisc(stone: stone, size: 26)
+                Text(L10n.stone(stone, language: language)).font(.caption.weight(.semibold))
+                Text(L10n.text(stone == .black ? "firstMove" : "secondMove", language))
+                    .font(.caption2).foregroundStyle(theme.secondary)
             }
         }
         .accessibilityIdentifier("stone.\(stone.rawValue)")
     }
+
+    private func randomStoneChip(width: CGFloat?) -> some View {
+        RailChip(selected: game.stoneSelection == .random, width: width, action: { game.stoneSelection = .random }) {
+            VStack(spacing: 6) {
+                Image(systemName: "shuffle").font(.title3)
+                Text(L10n.text("randomStone", language)).font(.caption.weight(.semibold))
+                Text(L10n.text(game.difficulty == .adaptive ? "alternatingStoneHelp" : "randomStoneHelp", language))
+                    .font(.caption2).foregroundStyle(theme.secondary)
+                    .lineLimit(2).multilineTextAlignment(.center)
+            }
+        }
+        .accessibilityIdentifier("stone.random")
+    }
+
+    private func difficultyChip(_ level: AIDifficulty, width: CGFloat?) -> some View {
+        RailChip(selected: game.difficulty == level, width: width, action: { game.difficulty = level }) {
+            VStack(spacing: 6) {
+                Image(systemName: difficultySymbol(level)).font(.title3)
+                Text(L10n.difficulty(level, language: language))
+                    .font(.caption.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+        }
+        .accessibilityIdentifier("difficulty.\(level.rawValue)")
+    }
+
+    private func timeChip(_ control: TimeControl, width: CGFloat?) -> some View {
+        RailChip(selected: game.timeControl == control, width: width, action: { game.timeControl = control }) {
+            VStack(spacing: 6) {
+                Text(timeControlClockLabel(control))
+                    .font(.gomokuClock(.title3, weight: .semibold))
+                Text(L10n.timeControl(control, language: language))
+                    .font(.caption2)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .accessibilityIdentifier("time.\(control.rawValue)")
+    }
+
 
     private func timeControlClockLabel(_ control: TimeControl) -> String {
         switch control {
@@ -452,9 +451,7 @@ struct ContentView: View {
                         }
                         .frame(width: max(280, min(geometry.size.height - 220, geometry.size.width - 390)))
                         VStack(spacing: 22) {
-                            turnStatus
-                            clocks
-                            clockRuleCard
+                            statusCard(showsClockRule: true)
                             matchActions
                         }
                         .frame(width: 290)
@@ -467,8 +464,7 @@ struct ContentView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 16) {
-                        clocks
-                        turnStatus
+                        statusCard(showsClockRule: false)
                         boardSection
                         matchActions
                     }
@@ -505,21 +501,83 @@ struct ContentView: View {
 
     }
 
-    private var clockRuleCard: some View {
+    private func statusCard(showsClockRule: Bool) -> some View {
         SurfaceCard {
-            VStack(alignment: .leading, spacing: 12) {
-                Label(L10n.text("timeReserve", language), systemImage: "arrow.clockwise")
-                    .font(.headline)
-                Text(L10n.timeSubtitle(game.timeControl, language: language))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(theme.accent)
-                Text(L10n.text(
-                    game.timeControl == .unlimited ? "noClock" :
-                    game.timeControl == .blitz ? "blitzHelp" : "timeRefillHelp",
-                    language
-                ))
-                    .font(.caption).foregroundStyle(theme.secondary)
+            VStack(spacing: 14) {
+                HStack(spacing: 10) {
+                    if game.isThinking || game.isValidatingMove {
+                        ProgressView().tint(theme.accent)
+                    } else {
+                        Image(systemName: game.result == nil ? "circle.dotted.circle.fill" : "checkmark.circle")
+                            .foregroundStyle(theme.accent)
+                    }
+                    Text(game.turnTitle(language: language))
+                        .font(.gomokuTitle(.headline))
+                        .accessibilityIdentifier("turnStatus")
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .combine)
+
+                VStack(spacing: 8) {
+                    playerRow(stone: .black)
+                    playerRow(stone: .white)
+                }
+
+                if showsClockRule {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.timeSubtitle(game.timeControl, language: language))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(theme.accent)
+                        Text(L10n.text(
+                            game.timeControl == .unlimited ? "noClock" :
+                            game.timeControl == .blitz ? "blitzHelp" : "timeRefillHelp",
+                            language
+                        ))
+                            .font(.caption2).foregroundStyle(theme.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
+        }
+    }
+
+    private func playerRow(stone: Stone) -> some View {
+        let active = game.currentTurn == stone && game.result == nil
+        return HStack(spacing: 12) {
+            StoneDisc(stone: stone, size: 22)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 5) {
+                    Text(L10n.text(stone == game.playerStone ? "you" : "ai", language))
+                        .font(.caption.weight(.semibold))
+                        .accessibilityIdentifier("playerLabel.\(stone.rawValue)")
+                    if active {
+                        Image(systemName: "smallcircle.filled.circle")
+                            .foregroundStyle(theme.calm)
+                            .font(.caption2)
+                            .accessibilityLabel(L10n.text("activeTurn", language))
+                    }
+                }
+                GeometryReader { geometry in
+                    Capsule().fill(theme.border.opacity(0.5))
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(game.isTimeLow(for: stone) ? theme.danger : theme.calm)
+                                .frame(width: geometry.size.width * game.timeFraction(for: stone))
+                        }
+                }
+                .frame(height: 4)
+                .accessibilityHidden(true)
+            }
+            Text(game.formattedTime(for: stone))
+                .font(.gomokuClock(.title3, weight: .medium))
+                .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : active ? theme.calm : theme.ink)
+                .accessibilityIdentifier("clock.\(stone.rawValue)")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(active ? theme.calmWash : theme.inset.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(active ? theme.calm.opacity(0.8) : Color.clear, lineWidth: 1.2)
         }
     }
 
@@ -558,69 +616,6 @@ struct ContentView: View {
                     .accessibilityIdentifier("forbiddenLegend")
             }
         }
-    }
-
-    private var clocks: some View {
-        HStack(spacing: 12) {
-            playerClock(stone: .black)
-            playerClock(stone: .white)
-        }
-    }
-
-    private func playerClock(stone: Stone) -> some View {
-        let active = game.currentTurn == stone && game.result == nil
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 7) {
-                StoneDisc(stone: stone, size: 18)
-                Text(L10n.text(stone == game.playerStone ? "you" : "ai", language))
-                    .font(.caption.weight(.semibold))
-                    .accessibilityIdentifier("playerLabel.\(stone.rawValue)")
-                Spacer(minLength: 2)
-                if active {
-                    Image(systemName: "smallcircle.filled.circle")
-                        .foregroundStyle(theme.calm)
-                        .font(.caption)
-                        .accessibilityLabel(L10n.text("activeTurn", language))
-                }
-            }
-            Text(game.formattedTime(for: stone))
-                .font(.gomokuClock(.title2, weight: .medium))
-                .foregroundStyle(game.isTimeLow(for: stone) ? theme.danger : active ? theme.calm : theme.ink)
-                .accessibilityIdentifier("clock.\(stone.rawValue)")
-            GeometryReader { geometry in
-                Capsule().fill(theme.border.opacity(0.5))
-                    .overlay(alignment: .leading) {
-                        Capsule().fill(game.isTimeLow(for: stone) ? theme.danger : theme.calm)
-                            .frame(width: geometry.size.width * game.timeFraction(for: stone))
-                    }
-            }
-            .frame(height: 5)
-            .accessibilityHidden(true)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(active ? theme.calmWash : theme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(active ? theme.calm.opacity(0.8) : theme.border, lineWidth: active ? 1.5 : 1)
-        }
-    }
-
-    private var turnStatus: some View {
-        HStack(spacing: 10) {
-            if game.isThinking || game.isValidatingMove {
-                ProgressView().tint(theme.accent)
-            } else {
-                Image(systemName: game.result == nil ? "circle.dotted.circle.fill" : "checkmark.circle")
-                    .foregroundStyle(theme.accent)
-            }
-            Text(game.turnTitle(language: language))
-                .font(.gomokuTitle(.headline))
-                .accessibilityIdentifier("turnStatus")
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
     }
 
     private var selectionPanel: some View {
