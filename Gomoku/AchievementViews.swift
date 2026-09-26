@@ -60,9 +60,9 @@ struct BossDifficultyCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 14) {
                     Image(systemName: unlocked ? "crown.fill" : "lock.fill")
-                        .font(.system(size: 28)).foregroundStyle(Color(hex: 0xFFBA9C))
+                        .font(.system(size: 28)).foregroundStyle(Color(hex: 0xFFD9C7))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("FINAL BOSS").font(.caption2.bold()).tracking(3).foregroundStyle(Color(hex: 0xFFC5B5))
+                        Text("FINAL BOSS").font(.caption2.bold()).tracking(3).foregroundStyle(Color(hex: 0xFFCBB3))
                         Text(L10n.difficulty(.veryHard, language: language)).font(.title3.bold())
                     }
                     Spacer(minLength: 0)
@@ -70,21 +70,23 @@ struct BossDifficultyCard: View {
                 }
                 if unlocked {
                     Text(L10n.choose("영구 해제 · 흑백 무작위 · 최대 7.5초 사고", "Permanently unlocked · Random colour · Up to 7.5s", language))
-                        .font(.caption).foregroundStyle(Color(hex: 0xFFD7CD))
+                        .font(.caption).foregroundStyle(Color(hex: 0xFFE7DB))
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         requirement(L10n.choose("경지에 오르다", "The Summit", language), value: progress.metrics["peakSkill", default: 0], target: 80)
-                        Text(L10n.choose("또는", "OR", language)).font(.caption2.bold()).foregroundStyle(Color(hex: 0xFFAF98))
+                        Text(L10n.choose("또는", "OR", language)).font(.caption2.bold()).foregroundStyle(Color(hex: 0xFFC7AD))
                         requirement(L10n.choose("강자의 증명 · 어려움 승리", "Proven Strength · Hard wins", language), value: progress.metrics["hardWins", default: 0], target: 2)
                     }
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
             .padding(18).foregroundStyle(.white)
-            .background(LinearGradient(colors: [Color(hex: 0x491326), Color(hex: selected ? 0xA61E32 : 0x751C2A), Color(hex: 0x260D17)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            // Same oxblood-to-ink family as the rest of the app's "final boss" accents,
+            // in place of the old magenta/crimson gradient.
+            .background(LinearGradient(colors: [Color(hex: 0x2A140D), Color(hex: selected ? 0xB8432F : 0x7A2B1E), Color(hex: 0x160B07)], startPoint: .topLeading, endPoint: .bottomTrailing))
             .clipShape(RoundedRectangle(cornerRadius: 18))
-            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: selected ? 0xFF8970 : 0xBC4854), lineWidth: selected ? 2 : 1))
-            .shadow(color: .red.opacity(selected ? 0.2 : 0.05), radius: 12, y: 4)
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color(hex: selected ? 0xE0836B : 0xA65340), lineWidth: selected ? 2 : 1))
+            .shadow(color: Color(hex: 0xB8432F).opacity(selected ? 0.22 : 0.06), radius: 12, y: 4)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("difficulty.veryHard")
@@ -94,7 +96,7 @@ struct BossDifficultyCard: View {
     private func requirement(_ name: String, value: Int, target: Int) -> some View {
         VStack(spacing: 4) {
             HStack { Text(name); Spacer(); Text("\(min(value, target)) / \(target)").monospacedDigit() }.font(.caption)
-            ProgressView(value: Double(min(value, target)), total: Double(target)).tint(Color(hex: 0xFFAB91))
+            ProgressView(value: Double(min(value, target)), total: Double(target)).tint(Color(hex: 0xFFC7AD))
         }
     }
 }

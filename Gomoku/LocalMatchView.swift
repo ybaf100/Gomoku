@@ -459,108 +459,114 @@ struct LocalMatchView: View {
     }
 
     private var setupScreen: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                HStack {
-                    QuietIconButton(title: L10n.text("backHome", language), symbol: "xmark") {
-                        game.resetSession()
-                        dismiss()
-                    }
-                    Spacer()
-                    Text(L10n.choose("혼자 두기", "Local Play", language))
-                        .font(.gomokuTitle(.title2, weight: .bold))
-                    Spacer()
-                    Color.clear.frame(width: 46, height: 46)
+        VStack(spacing: 0) {
+            HStack {
+                QuietIconButton(title: L10n.text("backHome", language), symbol: "xmark") {
+                    game.resetSession()
+                    dismiss()
                 }
+                Spacer()
+                Text(L10n.choose("혼자 두기", "Local Play", language))
+                    .font(.gomokuTitle(.title2, weight: .bold))
+                Spacer()
+                Color.clear.frame(width: 46, height: 46)
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
+            .padding(.bottom, 6)
 
-                SurfaceCard {
-                    VStack(alignment: .leading, spacing: 20) {
-                        Label(L10n.choose("한 iPad에서 마주 보고 두기", "Face-to-face on one iPad", language),
-                              systemImage: "person.2.fill")
-                            .font(.headline)
-
-                        Text(L10n.choose("누가 흑을 둘까요?", "Who plays Black?", language))
-                            .font(.headline)
-                        Text(L10n.choose("흑은 먼저 둡니다. 다음 판마다 위·아래 플레이어의 돌 색이 서로 바뀝니다.",
-                                         "Black moves first. The top and bottom players swap colours after each game.",
-                                         language))
-                            .font(.subheadline)
-                            .foregroundStyle(theme.secondary)
-
-                        HStack(spacing: 12) {
-                            colourChoice(bottomIsBlack: true)
-                            colourChoice(bottomIsBlack: false)
-                        }
-
-                        Divider()
-
-                        Text(L10n.choose("매치 형식", "Match format", language))
-                            .font(.subheadline.bold())
-                        HStack(spacing: 8) {
-                            ForEach(LocalMatchFormat.allCases) { format in
-                                formatChoice(format)
-                            }
-                        }
-                        Text(formatDescription(game.selectedFormat))
-                            .font(.caption)
-                            .foregroundStyle(theme.secondary)
-
-                        Divider()
-
-                        Text(L10n.choose("시간 설정", "Time control", language))
-                            .font(.subheadline.bold())
-                        Picker(L10n.choose("시간 설정", "Time control", language), selection: $game.timePreset) {
-                            ForEach(LocalTimePreset.allCases) { preset in
-                                Text(presetName(preset)).tag(preset)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .accessibilityIdentifier("local.timePreset")
-
-                        if game.timePreset == .custom {
-                            Text(L10n.choose("플레이어마다 서로 다른 시간을 사용할 수 있습니다.",
-                                             "Each player can use a different clock.", language))
-                                .font(.caption).foregroundStyle(theme.secondary)
-                            customClockEditor(
-                                title: L10n.choose("아래쪽 플레이어", "Bottom player", language),
-                                stone: game.selectedBottomStone,
-                                unlimited: $game.bottomCustomUnlimited,
-                                seconds: $game.bottomCustomSeconds,
-                                increment: $game.bottomCustomIncrement,
-                                prefix: "bottom"
-                            )
-                            customClockEditor(
-                                title: L10n.choose("위쪽 플레이어", "Top player", language),
-                                stone: game.selectedBottomStone.opponent,
-                                unlimited: $game.topCustomUnlimited,
-                                seconds: $game.topCustomSeconds,
-                                increment: $game.topCustomIncrement,
-                                prefix: "top"
-                            )
-                        } else {
-                            Text(presetDescription(game.timePreset))
+            ScrollView {
+                VStack(spacing: 16) {
+                    SurfaceCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            SectionCaption(number: "01", title: L10n.choose("좌석 배치", "Seating", language))
+                            Text(L10n.choose("흑은 먼저 둡니다. 다음 판마다 위·아래 플레이어의 돌 색이 서로 바뀝니다.",
+                                             "Black moves first. The top and bottom players swap colours after each game.",
+                                             language))
                                 .font(.caption)
                                 .foregroundStyle(theme.secondary)
-                        }
-
-                        Button { game.startGame() } label: {
-                            HStack {
-                                Spacer()
-                                Text(L10n.choose("혼자 두기 시작", "Start Local Play", language))
-                                Spacer()
-                                Image(systemName: "arrow.up")
+                            HStack(spacing: 12) {
+                                colourChoice(bottomIsBlack: true)
+                                colourChoice(bottomIsBlack: false)
                             }
                         }
-                        .buttonStyle(GomokuButtonStyle())
-                        .accessibilityIdentifier("local.start")
+                    }
+
+                    SurfaceCard {
+                        VStack(alignment: .leading, spacing: 14) {
+                            SectionCaption(number: "02", title: L10n.choose("매치 형식", "Match format", language))
+                            HStack(spacing: 8) {
+                                ForEach(LocalMatchFormat.allCases) { format in
+                                    formatChoice(format)
+                                }
+                            }
+                            Text(formatDescription(game.selectedFormat))
+                                .font(.caption)
+                                .foregroundStyle(theme.secondary)
+
+                            SectionCaption(number: "03", title: L10n.choose("시간 설정", "Time control", language))
+                            Picker(L10n.choose("시간 설정", "Time control", language), selection: $game.timePreset) {
+                                ForEach(LocalTimePreset.allCases) { preset in
+                                    Text(presetName(preset)).tag(preset)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .tint(theme.accent)
+                            .accessibilityIdentifier("local.timePreset")
+
+                            if game.timePreset == .custom {
+                                Text(L10n.choose("플레이어마다 서로 다른 시간을 사용할 수 있습니다.",
+                                                 "Each player can use a different clock.", language))
+                                    .font(.caption).foregroundStyle(theme.secondary)
+                                customClockEditor(
+                                    title: L10n.choose("아래쪽 플레이어", "Bottom player", language),
+                                    stone: game.selectedBottomStone,
+                                    unlimited: $game.bottomCustomUnlimited,
+                                    seconds: $game.bottomCustomSeconds,
+                                    increment: $game.bottomCustomIncrement,
+                                    prefix: "bottom"
+                                )
+                                customClockEditor(
+                                    title: L10n.choose("위쪽 플레이어", "Top player", language),
+                                    stone: game.selectedBottomStone.opponent,
+                                    unlimited: $game.topCustomUnlimited,
+                                    seconds: $game.topCustomSeconds,
+                                    increment: $game.topCustomIncrement,
+                                    prefix: "top"
+                                )
+                            } else {
+                                Text(presetDescription(game.timePreset))
+                                    .font(.caption)
+                                    .foregroundStyle(theme.secondary)
+                            }
+                        }
                     }
                 }
+                .frame(maxWidth: 680)
+                .padding(.horizontal, 22)
+                .padding(.top, 12)
+                .padding(.bottom, 18)
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: 680)
-            .padding(22)
-            .frame(maxWidth: .infinity)
+            .scrollIndicators(.hidden)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button { game.startGame() } label: {
+                    HStack {
+                        Spacer()
+                        Text(L10n.choose("혼자 두기 시작", "Start Local Play", language))
+                        Spacer()
+                        Image(systemName: "arrow.up")
+                    }
+                }
+                .buttonStyle(GomokuButtonStyle())
+                .accessibilityIdentifier("local.start")
+                .frame(maxWidth: 680)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(theme.background)
+            }
         }
-        .scrollIndicators(.hidden)
     }
 
     private func colourChoice(bottomIsBlack: Bool) -> some View {
@@ -612,19 +618,12 @@ struct LocalMatchView: View {
     }
 
     private func formatChoice(_ format: LocalMatchFormat) -> some View {
-        let selected = game.selectedFormat == format
-        return Button { game.selectedFormat = format } label: {
+        RailChip(selected: game.selectedFormat == format, width: nil, action: { game.selectedFormat = format }) {
             Text(formatLabel(format))
-                .font(.caption.bold())
+                .font(.caption.weight(.semibold))
                 .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .padding(.horizontal, 3)
-                .background(selected ? theme.accentWash : theme.inset, in: RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: GomokuRadius.tile, style: .continuous).stroke(selected ? theme.accent : theme.border, lineWidth: selected ? 1.5 : 1))
         }
-        .buttonStyle(.plain)
         .accessibilityIdentifier("local.format.\(format.rawValue)")
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func customClockEditor(
@@ -779,74 +778,76 @@ struct LocalMatchView: View {
         let seat = bottomPlayer ? L10n.choose("아래쪽 플레이어", "Bottom player", language)
                                 : L10n.choose("위쪽 플레이어", "Top player", language)
         return SurfaceCard {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        StoneDisc(stone: stone, size: 22)
-                        Text(seat).font(.caption.bold())
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    StoneDisc(stone: stone, size: 20)
+                    Text(seat).font(.caption.bold())
+                    Spacer(minLength: 6)
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(formatLabel(game.series.format))
+                        Text("\(game.series.gameNumber)\(L10n.choose("국", " game", language)) · \(seriesScoreText)")
                     }
-                    Text(L10n.stone(stone, language: language) + " · " + (active ? L10n.text("place", language) : L10n.choose("대기", "Wait", language)))
-                        .font(.caption)
-                        .foregroundStyle(active ? theme.calm : theme.secondary)
-                    Text(statsText(stats))
-                        .font(.caption2)
-                        .foregroundStyle(theme.secondary)
-                        .accessibilityIdentifier(bottomPlayer ? "local.stats.bottom" : "local.stats.top")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                VStack(spacing: 1) {
-                    Text(formatLabel(game.series.format))
-                    Text("\(game.series.gameNumber)\(L10n.choose("국", " game", language))")
-                    Text(seriesScoreText).monospacedDigit()
-                }
-                .font(.caption2.bold())
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier(bottomPlayer ? "local.series.bottom" : "local.series.top")
-                Text(game.formattedTime(for: stone))
-                    .font(.gomokuClock(.title, weight: .semibold))
-                    .minimumScaleFactor(0.65)
-                    .lineLimit(1)
-                    .monospacedDigit()
-                    .foregroundStyle(low ? theme.danger : active ? theme.calm : theme.ink)
-                    .padding(.horizontal, 5)
-                    .background(low ? theme.danger.opacity(0.13) : Color.clear,
-                                in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityIdentifier(bottomPlayer ? "local.timer.bottom" : "local.timer.top")
-                Menu {
-                    Button {
-                        game.undoLastMove()
-                        resultReady = false
-                        celebrationStart = nil
+                    .font(.caption2.bold())
+                    .foregroundStyle(theme.secondary)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier(bottomPlayer ? "local.series.bottom" : "local.series.top")
+                    Menu {
+                        Button {
+                            game.undoLastMove()
+                            resultReady = false
+                            celebrationStart = nil
+                        } label: {
+                            Label(L10n.choose("마지막 수 무르기", "Undo last move", language), systemImage: "arrow.uturn.backward")
+                        }
+                        .disabled(!game.canUndo(forBottomPlayer: bottomPlayer))
+                        .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.undo" : "local.menu.top.undo")
+                        Button(role: .destructive) {
+                            resigningBottomPlayer = bottomPlayer
+                            showResignConfirmation = true
+                        } label: {
+                            Label(L10n.choose("기권", "Resign", language), systemImage: "flag.fill")
+                        }
+                        .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.resign" : "local.menu.top.resign")
+                        Button {
+                            game.resetSession()
+                            dismiss()
+                        } label: {
+                            Label(L10n.text("backHome", language), systemImage: "house")
+                        }
+                        .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.home" : "local.menu.top.home")
+                        Button(L10n.choose("닫기", "Close", language)) {}
+                            .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.close" : "local.menu.top.close")
                     } label: {
-                        Label(L10n.choose("마지막 수 무르기", "Undo last move", language), systemImage: "arrow.uturn.backward")
+                        Image(systemName: "ellipsis")
+                            .font(.subheadline.bold())
+                            .frame(width: 32, height: 32)
+                            .background(theme.inset, in: Circle())
                     }
-                    .disabled(!game.canUndo(forBottomPlayer: bottomPlayer))
-                    .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.undo" : "local.menu.top.undo")
-                    Button(role: .destructive) {
-                        resigningBottomPlayer = bottomPlayer
-                        showResignConfirmation = true
-                    } label: {
-                        Label(L10n.choose("기권", "Resign", language), systemImage: "flag.fill")
-                    }
-                    .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.resign" : "local.menu.top.resign")
-                    Button {
-                        game.resetSession()
-                        dismiss()
-                    } label: {
-                        Label(L10n.text("backHome", language), systemImage: "house")
-                    }
-                    .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.home" : "local.menu.top.home")
-                    Button(L10n.choose("닫기", "Close", language)) {}
-                        .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom.close" : "local.menu.top.close")
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.headline.bold())
-                        .frame(width: 40, height: 44)
+                    .accessibilityLabel(seat + " " + L10n.choose("메뉴", "menu", language))
+                    .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom" : "local.menu.top")
                 }
-                .accessibilityLabel(seat + " " + L10n.choose("메뉴", "menu", language))
-                .accessibilityIdentifier(bottomPlayer ? "local.menu.bottom" : "local.menu.top")
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(L10n.stone(stone, language: language) + " · " + (active ? L10n.text("place", language) : L10n.choose("대기", "Wait", language)))
+                            .font(.caption)
+                            .foregroundStyle(active ? theme.calm : theme.secondary)
+                        Text(statsText(stats))
+                            .font(.caption2)
+                            .foregroundStyle(theme.secondary)
+                            .accessibilityIdentifier(bottomPlayer ? "local.stats.bottom" : "local.stats.top")
+                    }
+                    Spacer(minLength: 6)
+                    Text(game.formattedTime(for: stone))
+                        .font(.gomokuClock(.title2, weight: .semibold))
+                        .minimumScaleFactor(0.65)
+                        .lineLimit(1)
+                        .monospacedDigit()
+                        .foregroundStyle(low ? theme.danger : active ? theme.calm : theme.ink)
+                        .padding(.horizontal, 5)
+                        .background(low ? theme.danger.opacity(0.13) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityIdentifier(bottomPlayer ? "local.timer.bottom" : "local.timer.top")
+                }
             }
         }
         .overlay {

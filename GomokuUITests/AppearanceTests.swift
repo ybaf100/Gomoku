@@ -279,6 +279,7 @@ final class AppearanceTests: XCTestCase {
 
     func testLocalSetupAndMenu() {
         tap("openLocalMatch")
+        XCTAssertTrue(app.buttons["local.start"].isHittable, "The local start action stays in the bottom bar without scrolling")
         XCTAssertTrue(app.buttons["local.black.bottom"].label.contains("아래쪽 플레이어 흑 선공"))
         tap("local.black.top")
         XCTAssertTrue(app.buttons["local.black.top"].isSelected)
